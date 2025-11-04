@@ -1033,7 +1033,7 @@
     <canvas id="backgroundCanvas"></canvas>
     <div class="contract-address-container">
         <div class="contract-address-wrapper">
-            <div class="contract-address" id="contractAddress">Contract Address: nocontractyet</div>
+            <div class="contract-address" id="contractAddress">Contract Address: server data not found</div>
             <a href="https://twitter.com" target="_blank" rel="noopener noreferrer" class="twitter-link" id="twitterLink" title="Follow us on Twitter">
                 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                     <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
@@ -1333,20 +1333,32 @@
         }
 
         // Contract Address functionality
-        // Get localToken from environment or use fallback
-        // In browser, process.env is typically injected at build time
-        // For now, we'll use a global variable or fallback
-        const localToken = (typeof process !== 'undefined' && process.env && process.env.localToken) 
-            || (typeof window !== 'undefined' && window.localToken)
-            || 'nocontractyet';
+        // Get localToken from server
+        let localToken = 'no data';
         
         const contractAddressEl = document.getElementById('contractAddress');
         if (contractAddressEl) {
-            contractAddressEl.textContent = `Contract Address: ${localToken}`;
+            // Fetch localToken from server
+            (async () => {
+                try {
+                    const response = await fetch('/api/localToken');
+                    const data = await response.json();
+                    localToken = data.localToken || 'no data';
+                    contractAddressEl.textContent = `Contract Address: ${localToken}`;
+                } catch (error) {
+                    console.error('Error fetching localToken:', error);
+                    localToken = 'no data';
+                    contractAddressEl.textContent = `Contract Address: ${localToken}`;
+                }
+            })();
             
             contractAddressEl.addEventListener('click', async () => {
                 try {
-                    await navigator.clipboard.writeText(localToken);
+                    // Get current value from element text in case fetch hasn't completed
+                    const currentToken = localToken === 'no data' 
+                        ? contractAddressEl.textContent.replace('Contract Address: ', '')
+                        : localToken;
+                    await navigator.clipboard.writeText(currentToken);
                     contractAddressEl.classList.add('copied');
                     const originalText = contractAddressEl.textContent;
                     contractAddressEl.textContent = 'Copied!';
@@ -1358,8 +1370,11 @@
                 } catch (err) {
                     console.error('Failed to copy:', err);
                     // Fallback for older browsers
+                    const currentToken = localToken === 'no data' 
+                        ? contractAddressEl.textContent.replace('Contract Address: ', '')
+                        : localToken;
                     const textArea = document.createElement('textarea');
-                    textArea.value = localToken;
+                    textArea.value = currentToken;
                     textArea.style.position = 'fixed';
                     textArea.style.opacity = '0';
                     document.body.appendChild(textArea);

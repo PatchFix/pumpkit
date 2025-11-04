@@ -75,6 +75,12 @@ app.get('/', (req, res) => {
     res.sendFile(join(__dirname, 'public', 'index.html'));
 });
 
+// API endpoint to get localToken
+app.get('/api/localToken', (req, res) => {
+    const localToken = process.env.localToken || 'no data';
+    res.json({ localToken });
+});
+
 // Proxy route for images to avoid CORS issues
 app.get('/proxy-image', async (req, res) => {
     const imageUrl = req.query.url;
