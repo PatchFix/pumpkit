@@ -1361,8 +1361,8 @@ class AlertApp {
             return;
         }
 
-        // Find the marketcap value element
-        const marketcapValue = card.querySelector('.token-stat-value');
+        // Find the marketcap value element (for dex cards, it's in .token-marketcap)
+        const marketcapValue = card.querySelector('.token-marketcap');
         if (marketcapValue) {
             const formattedValue = marketCapUSD ? 
                 `$${marketCapUSD.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})}` : 
@@ -2064,23 +2064,13 @@ class AlertApp {
 
     async fetchDeveloperTokens(address) {
         try {
-            const response = await fetch(`https://frontend-api-v3.pump.fun/coins/user-created-coins/${address}`, {
-                method: 'GET',
-                headers: {
-                    'Accept': 'application/json',
-                },
-            });
+            const response = await fetch(`/api/developer-tokens/${address}`);
             
             if (!response.ok) {
                 return null;
             }
             
-            const text = await response.text();
-            if (!text || text.trim().length === 0) {
-                return null;
-            }
-            
-            const data = JSON.parse(text);
+            const data = await response.json();
             
             // Handle different response structures
             if (Array.isArray(data)) {
@@ -2133,33 +2123,40 @@ class AlertApp {
                     return false;
                 }
                 try {
-                    // Check cache first
+                    // Check cache first - use longer cache time (5 minutes) to prevent spam
                     let created = this.developerTokensCache.get(token.deployer);
                     if (!created) {
-                        created = await this.fetchDeveloperTokens(token.deployer);
-                        // Cache for 30 seconds to avoid spam
-                        if (created) {
-                            this.developerTokensCache.set(token.deployer, created);
-                            setTimeout(() => {
-                                this.developerTokensCache.delete(token.deployer);
-                            }, 30000);
+                        // Check if there's a pending request for this deployer to avoid duplicate requests
+                        const cacheKey = `pending_${token.deployer}`;
+                        if (this.developerTokensCache.has(cacheKey)) {
+                            // Wait a bit and check cache again
+                            await new Promise(resolve => setTimeout(resolve, 500));
+                            created = this.developerTokensCache.get(token.deployer);
+                            if (created) {
+                                return this.calculateBondedPercentage(created, token, alert);
+                            }
+                            return false;
+                        }
+                        
+                        // Mark as pending
+                        this.developerTokensCache.set(cacheKey, true);
+                        
+                        try {
+                            created = await this.fetchDeveloperTokens(token.deployer);
+                            // Cache for 5 minutes to avoid spam
+                            if (created) {
+                                this.developerTokensCache.set(token.deployer, created);
+                                setTimeout(() => {
+                                    this.developerTokensCache.delete(token.deployer);
+                                }, 300000); // 5 minutes
+                            }
+                        } finally {
+                            // Remove pending flag
+                            this.developerTokensCache.delete(cacheKey);
                         }
                     }
                     
-                    if (!created || !Array.isArray(created) || created.length === 0) {
-                        return false;
-                    }
-                    
-                    // Filter out the current token (by mint) and calculate bonded percentage
-                    const otherTokens = created.filter(t => t.mint !== token.mint);
-                    if (otherTokens.length === 0) {
-                        return false; // No other tokens to check
-                    }
-                    
-                    const bondedTokens = otherTokens.filter(t => t.complete === true);
-                    const bondedPercentage = (bondedTokens.length / otherTokens.length) * 100;
-                    
-                    return bondedPercentage >= alert.percentage;
+                    return this.calculateBondedPercentage(created, token, alert);
                 } catch (error) {
                     console.error(`Error checking deployer-bonded alert for ${alert.id}:`, error.message);
                     return false;
@@ -2179,6 +2176,23 @@ class AlertApp {
                 return false;
         }
     }
+    
+    calculateBondedPercentage(created, token, alert) {
+        if (!created || !Array.isArray(created) || created.length === 0) {
+            return false;
+        }
+        
+        // Filter out the current token (by mint) and calculate bonded percentage
+        const otherTokens = created.filter(t => t.mint !== token.mint);
+        if (otherTokens.length === 0) {
+            return false; // No other tokens to check
+        }
+        
+        const bondedTokens = otherTokens.filter(t => t.complete === true);
+        const bondedPercentage = (bondedTokens.length / otherTokens.length) * 100;
+        
+        return bondedPercentage >= alert.percentage;
+    }
 
     async checkAlertsForToken(token, isNewToken = false) {
         if (!token.mint) return;
@@ -2188,32 +2202,11 @@ class AlertApp {
         
         for (const alert of this.alerts) {
             try {
-                // Skip deployer alerts on trade updates (only check on new tokens or when metadata updates)
+                // Skip deployer alerts on trade updates (only check on new tokens)
                 // This prevents spam API requests on every trade
                 if (!isNewToken && (alert.type === 'deployer-bonded' || alert.type === 'deployer-marketcap')) {
-                    // Only check deployer alerts if we haven't already triggered this alert for this token
-                    const alertKey = `${token.mint}-${alert.id}`;
-                    if (!this.triggeredAlerts.has(alertKey)) {
-                        // First time checking this deployer alert for this token, allow it
-                        const shouldTrigger = await this.checkAlert(alert, token);
-                        if (shouldTrigger) {
-                            const isNewTrigger = !this.triggeredAlerts.has(alertKey);
-                            
-                            alertTriggered = true;
-                            matchedAlertId = alert.id;
-                            
-                            // Mark this alert as triggered for this token
-                            this.triggeredAlerts.add(alertKey);
-                            
-                            // Only play sound and log if this is the first time this alert triggers for this token
-                            if (isNewTrigger) {
-                                console.log(`🚨 ALERT TRIGGERED: ${this.getAlertDescription(alert)} - Token: ${token.name} (${token.symbol})`);
-                                // Play alert sound
-                                this.playAlertSound();
-                            }
-                        }
-                    }
-                    continue; // Skip to next alert
+                    // Skip deployer alerts entirely on trade updates
+                    continue;
                 }
                 
                 const shouldTrigger = await this.checkAlert(alert, token);

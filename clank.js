@@ -67,14 +67,7 @@ app.use((req, res, next) => {
     next();
 });
 
-// Serve static files
-app.use(express.static(join(__dirname, 'public')));
-
-// Serve the main HTML page
-app.get('/', (req, res) => {
-    res.sendFile(join(__dirname, 'public', 'index.html'));
-});
-
+// API routes must be defined BEFORE static files to ensure they're matched first
 // API endpoint to get localToken
 app.get('/api/localToken', (req, res) => {
     const localToken = process.env.localToken || 'no data';
@@ -96,6 +89,33 @@ app.get('/api/live-streams', async (req, res) => {
         console.error('Error fetching live streams:', error.message);
         res.status(500).json({ error: 'Failed to fetch live streams' });
     }
+});
+
+// API endpoint to proxy developer tokens (avoid CORS issues)
+app.get('/api/developer-tokens/:address', async (req, res) => {
+    try {
+        const { address } = req.params;
+        console.log(`[Server] Fetching developer tokens for address: ${address}`);
+        const response = await axios.get(`https://frontend-api-v3.pump.fun/coins/user-created-coins/${address}?offset=0&limit=100&includeNsfw=true`, {
+            headers: {
+                'Accept': 'application/json',
+            },
+            timeout: 10000
+        });
+        
+        res.json(response.data);
+    } catch (error) {
+        console.error('Error fetching developer tokens:', error.message);
+        res.status(500).json({ error: 'Failed to fetch developer tokens' });
+    }
+});
+
+// Serve static files
+app.use(express.static(join(__dirname, 'public')));
+
+// Serve the main HTML page
+app.get('/', (req, res) => {
+    res.sendFile(join(__dirname, 'public', 'index.html'));
 });
 
 // Proxy route for images to avoid CORS issues
