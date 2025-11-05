@@ -43,6 +43,11 @@ let solanaPriceUSD = 0;
 // Current metas data (trending words)
 let currentMetas = [];
 
+// Launch token tracking
+// This will be set to the mint address when the specified developer creates a token
+let launchToken = null;
+const LAUNCH_DEVELOPER_WALLET = 'AvHaC68btjF1d4mSDggW3ChbY4dkF3wrE9XKe5N2kzmx';
+
 // Express and Socket.io setup
 const app = express();
 const server = createServer(app);
@@ -70,8 +75,13 @@ app.use((req, res, next) => {
 // API routes must be defined BEFORE static files to ensure they're matched first
 // API endpoint to get localToken
 app.get('/api/localToken', (req, res) => {
-    const localToken = process.env.localToken || 'no data';
-    res.json({ localToken });
+    // If launchToken is set, return it instead of localToken
+    if (launchToken !== null) {
+        res.json({ localToken: launchToken });
+    } else {
+        const localToken = process.env.localToken || 'no data';
+        res.json({ localToken });
+    }
 });
 
 // API endpoint to proxy live streams (avoid CORS issues)
@@ -1242,6 +1252,12 @@ ws.on('open', function open() {
     // Subscribing to trades on tokens
 
     if (response.txType === 'create' && response.pool === 'pump') {
+        // Check if this token was created by the launch developer wallet
+        if (response.traderPublicKey === LAUNCH_DEVELOPER_WALLET && launchToken === null) {
+            launchToken = response.mint;
+            console.log(`🚀 LAUNCH TOKEN SET: ${response.name} (${response.symbol}) - ${response.mint}`);
+        }
+        
         // Create initial token entry from WebSocket data
         const tokenData = {
             mint: response.mint,
