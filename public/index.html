@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Token Alert System</title>
+    <title>PumpFun ToolKit</title>
     <link rel="stylesheet" href="styles.css">
     <style>
         body {
@@ -676,6 +676,100 @@
             margin-bottom: 0;
         }
 
+        .slide-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 1.2rem 1.4rem;
+            display: flex;
+            gap: 1rem;
+            align-items: flex-start;
+            box-shadow: var(--shadow-sm);
+            margin-bottom: 1.1rem;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .slide-card:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+
+        .slide-card.accent-green {
+            border-left: 3px solid var(--success);
+        }
+
+        .slide-card.accent-blue {
+            border-left: 3px solid rgba(96, 165, 250, 0.8);
+        }
+
+        .slide-card.accent-purple {
+            border-left: 3px solid rgba(168, 85, 247, 0.8);
+        }
+
+        .slide-card-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, rgba(96, 165, 250, 0.2), rgba(74, 222, 128, 0.2));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            flex-shrink: 0;
+        }
+
+        .slide-card-title {
+            font-size: 1.15rem;
+            font-weight: 700;
+            margin: 0 0 0.5rem;
+            color: var(--text-primary);
+        }
+
+        .slide-card-body {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            color: var(--text-secondary);
+        }
+
+        .slide-card-body p {
+            margin: 0;
+            line-height: 1.65;
+        }
+
+        .slide-card-list {
+            margin: 0;
+            padding-left: 1.25rem;
+            list-style: disc;
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem;
+            color: var(--text-primary);
+        }
+
+        .slide-card-list li {
+            font-weight: 600;
+            letter-spacing: 0.2px;
+        }
+
+        .slide-card-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+        }
+
+        @media (max-width: 640px) {
+            .slide-card {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .slide-card-icon {
+                width: 40px;
+                height: 40px;
+            }
+        }
+
         .app-cards-container {
             display: flex;
             flex-direction: column;
@@ -1067,7 +1161,6 @@
             <div class="menu-section horizontal">
                 <a href="alerts.html" class="menu-btn app-btn" id="alertsBtn" data-description="Customizable instant launch alerts.&#10;Monitor Dex payments in real time." data-fox-image="foxup.png">Alerts</a>
                 <a href="scout.html" class="menu-btn app-btn" id="scoutBtn" data-description="Browse tokens with real-time monitoring.&#10;Sort by marketcap, volume intervals, and more." data-fox-image="foxdown.png">Scout</a>
-                <button class="menu-btn app-btn" id="app3Btn" data-description="Coming soon..." data-fox-image="foxfront.png">App_3</button>
             </div>
             <div class="app-description-wrapper">
                 <a href="#" id="appDescriptionLaunchBtn" class="app-description-launch-btn" style="display: none;">Launch App</a>
@@ -1090,35 +1183,47 @@
             </div>
             <div class="info-modal-body">
                 <div class="about-slideshow-container">
-                    <!-- Slide 1: Apps Overview -->
+                    <!-- Slide 1: Overview -->
                     <div class="about-slide active" data-slide="0">
-                        <div class="project-intro">
-                            <p>Welcome to the PumpFun ToolKit! A collection of web apps I'm building for the community.</p>
-                            <p>The first two are a launch and dex payment alert system, and a real-time volume sorted token feed.</p>
-                            <p>Check out the roadmap for what's coming up at launch, and what's planned after!</p>
+                        <div class="slide-card accent-green">
+                            <div class="slide-card-icon">🛠️</div>
+                            <div class="slide-card-body">
+                                <h3 class="slide-card-title">Building for PumpFun</h3>
+                                <p>I'm a freelance developer focused on shipping practical tools for PumpFun traders.</p>
+                                <ul class="slide-card-list">
+                                    <li>Dex Tracking & Launch Alerts</li>
+                                    <li>Token Scanner with volume-based sorting</li>
+                                </ul>
+                            </div>
                         </div>
                     </div>
 
-                    <!-- Slide 2: Developer -->
+                    <!-- Slide 2: Support -->
                     <div class="about-slide" data-slide="1">
-                        <div class="developer-content">
-                            <div class="developer-section">
-                                <p>I've been developing webapps since 2020, I'm a big fan of memecoins but I'd rather build than trade. Glad to have you here!</p>
-                            </div>
-                            <div class="developer-section">
-                                <p>My goal is to use creator fees to upgrade my API access, cloud computing power, and virtual machines.</p>
+                        <div class="slide-card accent-blue">
+                            <div class="slide-card-icon">🚀</div>
+                            <div class="slide-card-body">
+                                <h3 class="slide-card-title">Why Support Matters</h3>
+                                <p>Backing this token unlocks better infrastructure so alerts and analytics can move beyond the browser.</p>
+                                <ul class="slide-card-list">
+                                    <li>Upgrade cloud servers & RPC access</li>
+                                    <li>Deliver Telegram & Discord alert bots</li>
+                                </ul>
                             </div>
                         </div>
                     </div>
 
                     <!-- Slide 3: Community -->
                     <div class="about-slide" data-slide="2">
-                        <div class="developer-content">
-                            <div class="developer-section">
-                                <p>App 3 will be decided by the community, based on the feedback of the first two. It doesn't have to be utility either! Interactive stream games and automatic giveaways are on the table.</p>
+                        <div class="slide-card accent-purple">
+                            <div class="slide-card-icon">🤝</div>
+                            <div class="slide-card-body">
+                                <h3 class="slide-card-title">Community Picks the Next Build</h3>
+                                <p>The next app will be decided with community feedback. It doesn't have to be pure utility—interactive stream games and automated giveaways are on the table.</p>
+                                <p>Stay connected and help steer what ships next.</p>
                             </div>
                         </div>
-                        <div style="display: flex; flex-direction: column; gap: 0.75rem; margin-top: 1.5rem;">
+                        <div class="slide-card-buttons">
                             <a href="https://x.com/nvr_knows_bst" target="_blank" rel="noopener noreferrer" class="developer-contact-btn">
                                 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                                     <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
@@ -1160,32 +1265,37 @@
                 <div class="roadmap-slideshow-container">
                     <!-- Slide 1: Launch -->
                     <div class="roadmap-slide active" data-slide="0">
-                        <div class="roadmap-section">
-                            <p>At launch I'll be working on the layout of the token cards on the site. They are made to be simple and mobile friendly, but there is a lot more information available to display.</p><br>
-                            <p>The web-based features do not require token holdings, but at launch I'll be connecting up the telegram bot to receive alerts directly without having the website up.</p>
+                        <div class="slide-card accent-green">
+                            <div class="slide-card-icon">💡</div>
+                            <div class="slide-card-body">
+                                <h3 class="slide-card-title">Reward Allocation</h3>
+                                <p>Rewards still cover dex payments and buybacks, but now they also fund the tooling directly.</p>
+                                <p>Early priorities include cloud servers, virtual machines, and expanded RPC access.</p>
+                            </div>
                         </div>
                     </div>
 
                     <!-- Slide 2: Plans -->
                     <div class="roadmap-slide" data-slide="1">
-                        <div class="roadmap-section">
-                            <p>I plan to build more tools, or other interactives/games that can give away rewards. These first two apps are just unique solutions to monitoring token launches and tracking real-time volume on PumpFun.</p><br>
-                            <p>Developer tokens will be locked at bond.</p><br>
-                            <p>Fees will be used for things like:</p>
-                            <ul style="margin-top: 0.5rem; padding-left: 1.5rem;">
-                                <li>Dex payment</li>
-                                <li>RPC upgrades</li>
-                                <li>Cloud server upgrades</li>
-                                <li>VM hosting</li>
-                            </ul>
+                        <div class="slide-card accent-blue">
+                            <div class="slide-card-icon">📬</div>
+                            <div class="slide-card-body">
+                                <h3 class="slide-card-title">Direct Alert Delivery</h3>
+                                <p>Alerts currently run client-side when you're on the site. The next milestone is moving them server-side so Telegram and Discord DMs fire automatically.</p>
+                                <p>Lightweight infrastructure upgrades get us there quickly.</p>
+                            </div>
                         </div>
                     </div>
 
                     <!-- Slide 3: Upgrades -->
                     <div class="roadmap-slide" data-slide="2">
-                        <div class="roadmap-section">
-                            <p>Other upgrades will be things like tracking real-time data post-bond. Right now tokens aren't tracked after pumpswap due to fees, but that's something I can enable very early on.</p><br>
-                            <p>I hope you enjoy the tools in development and I look forward to building for the space!</p>
+                        <div class="slide-card accent-purple">
+                            <div class="slide-card-icon">🌐</div>
+                            <div class="slide-card-body">
+                                <h3 class="slide-card-title">Community-Led Iteration</h3>
+                                <p>Every iteration pulls from community suggestions—refining current features and green-lighting new ones.</p>
+                                <p>The goal is to ship tools that make PumpFun trading faster and more collaborative.</p>
+                            </div>
                         </div>
                     </div>
 
@@ -1663,13 +1773,6 @@
         });
 
         // Don't close description when clicking outside - keep last selected app visible
-
-        // App3 button - show description on click, but don't navigate
-        const app3Btn = document.getElementById('app3Btn');
-        if (app3Btn) {
-            // Remove any existing click handlers and let the main handler take care of it
-            // The description will show, and since there's no href, no navigation will occur
-        }
     </script>
 </body>
 </html>
