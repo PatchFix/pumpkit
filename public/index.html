@@ -1140,6 +1140,7 @@
     <div class="contract-address-container">
         <div class="contract-address-wrapper">
             <div class="contract-address" id="contractAddress">Contract Address: server data not found</div>
+            <div id="loginStatus" style="display: none; padding: 0.5rem 1rem; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: var(--radius-sm); font-size: 0.875rem; font-weight: 600;"></div>
             <a href="https://x.com/nvr_knows_bst" target="_blank" rel="noopener noreferrer" class="twitter-link" id="twitterLink" title="Follow us on X">
                 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                     <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
@@ -1161,7 +1162,6 @@
             <div class="menu-section horizontal">
                 <a href="alerts.html" class="menu-btn app-btn" id="alertsBtn" data-description="Customizable instant launch alerts.&#10;Monitor Dex payments in real time." data-fox-image="foxup.png">Alerts</a>
                 <a href="scout.html" class="menu-btn app-btn" id="scoutBtn" data-description="Browse tokens with real-time monitoring.&#10;Sort by marketcap, volume intervals, and more." data-fox-image="foxdown.png">Scout</a>
-                <a href="demo.html" class="menu-btn app-btn" id="demoBtn" data-description="Visual tech demo showing backend operations in real-time.&#10;See tokens, trades, migrations, and more." data-fox-image="foxfront.png">Demo</a>
             </div>
             <div class="app-description-wrapper">
                 <a href="#" id="appDescriptionLaunchBtn" class="app-description-launch-btn" style="display: none;">Launch App</a>
@@ -1426,6 +1426,83 @@
                 console.error('Error loading theme:', e);
             }
         }
+
+        // Load and verify user session from localStorage
+        let currentUser = null;
+        
+        function loadUserSessionFromStorage() {
+            try {
+                const stored = localStorage.getItem('userSession');
+                if (stored) {
+                    const session = JSON.parse(stored);
+                    if (session.username && session.password) {
+                        currentUser = {
+                            username: session.username,
+                            password: session.password
+                        };
+                        verifyAndRestoreSession();
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading user session from localStorage:', error);
+                localStorage.removeItem('userSession');
+            }
+        }
+
+        async function verifyAndRestoreSession() {
+            if (!currentUser) return;
+            
+            try {
+                const response = await fetch('/api/users/get-alerts', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username: currentUser.username,
+                        password: currentUser.password
+                    })
+                });
+                
+                const data = await response.json();
+                if (response.ok && data.success) {
+                    // Session is valid, update login status display
+                    updateLoginStatusDisplay();
+                } else {
+                    // Session is invalid, clear it
+                    currentUser = null;
+                    localStorage.removeItem('userSession');
+                    updateLoginStatusDisplay();
+                }
+            } catch (error) {
+                console.error('Error verifying user session:', error);
+            }
+        }
+
+        function updateLoginStatusDisplay() {
+            const loginStatusEl = document.getElementById('loginStatus');
+            if (loginStatusEl) {
+                if (currentUser) {
+                    loginStatusEl.innerHTML = `
+                        <a href="alerts.html" style="text-decoration: none; color: var(--text-primary); display: flex; align-items: center; gap: 0.5rem;">
+                            <span>👤</span>
+                            <span>${escapeHtml(currentUser.username)}</span>
+                        </a>
+                    `;
+                    loginStatusEl.style.display = 'block';
+                } else {
+                    loginStatusEl.style.display = 'none';
+                }
+            }
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Load session on page load
+        loadUserSessionFromStorage();
 
         // Contract Address functionality
         // Get localToken from server

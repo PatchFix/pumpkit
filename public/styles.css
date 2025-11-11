@@ -1855,6 +1855,20 @@ body[data-theme="pump"] .settings-option-btn.active:hover {
     box-shadow: var(--shadow-sm);
 }
 
+.token-card.pulse-buy {
+    animation: pulseGreen 1s ease-out;
+}
+
+.token-card.pulse-sell {
+    animation: pulseRed 1s ease-out;
+}
+
+.token-card.token-complete {
+    border-color: #fbbf24;
+    box-shadow: 0 0 20px rgba(251, 191, 36, 0.5), 0 0 40px rgba(251, 191, 36, 0.3);
+    animation: goldGlow 2s ease-in-out infinite;
+}
+
 /* Dex Token Placeholder and Card Styles */
 .dex-token-placeholder {
     background: var(--bg-tertiary);

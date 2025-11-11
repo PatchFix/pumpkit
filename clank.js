@@ -8,6 +8,8 @@ import { dirname, join } from 'path';
 import puppeteer from 'puppeteer';
 import fs from 'fs';
 import crypto from 'crypto';
+import pkg from 'pg';
+const { Pool } = pkg;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -101,29 +103,125 @@ app.get('/api/localToken', (req, res) => {
     }
 });
 
-// Helper function to read clients.json
-function readClients() {
-    const clientsPath = join(__dirname, 'clients.json');
-    try {
-        if (fs.existsSync(clientsPath)) {
-            const data = fs.readFileSync(clientsPath, 'utf8');
-            return JSON.parse(data);
+// Database configuration - auto-detect Postgres or use JSON
+const DATABASE_URL = process.env.DATABASE_URL;
+const USE_POSTGRES = !!DATABASE_URL;
+let dbPool = null;
+
+// Initialize database connection if Postgres is available
+async function initDatabase() {
+    if (USE_POSTGRES) {
+        try {
+            dbPool = new Pool({
+                connectionString: DATABASE_URL,
+                ssl: DATABASE_URL.includes('localhost') ? false : { rejectUnauthorized: false }
+            });
+            
+            // Test connection
+            await dbPool.query('SELECT NOW()');
+            console.log('✅ Connected to Postgres database');
+            
+            // Create users table if it doesn't exist
+            await dbPool.query(`
+                CREATE TABLE IF NOT EXISTS users (
+                    username_lower VARCHAR(16) PRIMARY KEY,
+                    user_data JSONB NOT NULL,
+                    updated_at TIMESTAMP DEFAULT NOW()
+                )
+            `);
+            console.log('✅ Users table ready');
+        } catch (error) {
+            console.error('❌ Error initializing Postgres database:', error.message);
+            console.log('⚠️  Falling back to JSON file storage');
+            dbPool = null;
         }
-    } catch (error) {
-        console.error('Error reading clients.json:', error.message);
+    } else {
+        console.log('ℹ️  Using JSON file storage (local development)');
     }
-    return {};
 }
 
-// Helper function to write clients.json
-function writeClients(clients) {
-    const clientsPath = join(__dirname, 'clients.json');
-    try {
-        fs.writeFileSync(clientsPath, JSON.stringify(clients, null, 2), 'utf8');
-        return true;
-    } catch (error) {
-        console.error('Error writing clients.json:', error.message);
-        return false;
+// Initialize database on startup
+// Note: We don't wait for this to complete before starting the server
+// The readClients/writeClients functions will fall back to JSON if Postgres isn't ready
+initDatabase().catch(error => {
+    console.error('Error during database initialization:', error);
+    dbPool = null; // Ensure dbPool is null on error
+});
+
+// Helper function to read clients (Postgres or JSON)
+async function readClients() {
+    if (USE_POSTGRES && dbPool) {
+        try {
+            const result = await dbPool.query('SELECT username_lower, user_data FROM users');
+            const clients = {};
+            result.rows.forEach(row => {
+                // user_data is stored as JSONB, pg automatically parses it
+                // But we need to ensure it's an object, not a string
+                clients[row.username_lower] = typeof row.user_data === 'string' 
+                    ? JSON.parse(row.user_data) 
+                    : row.user_data;
+            });
+            return clients;
+        } catch (error) {
+            console.error('Error reading from Postgres:', error.message);
+            return {};
+        }
+    } else {
+        // Fall back to JSON file
+        const clientsPath = join(__dirname, 'clients.json');
+        try {
+            if (fs.existsSync(clientsPath)) {
+                const data = fs.readFileSync(clientsPath, 'utf8');
+                return JSON.parse(data);
+            }
+        } catch (error) {
+            console.error('Error reading clients.json:', error.message);
+        }
+        return {};
+    }
+}
+
+// Helper function to write clients (Postgres or JSON)
+async function writeClients(clients) {
+    if (USE_POSTGRES && dbPool) {
+        try {
+            const client = await dbPool.connect();
+            try {
+                await client.query('BEGIN');
+                
+                // Upsert each user
+                for (const [usernameLower, userData] of Object.entries(clients)) {
+                    await client.query(
+                        `INSERT INTO users (username_lower, user_data, updated_at) 
+                         VALUES ($1, $2, NOW()) 
+                         ON CONFLICT (username_lower) 
+                         DO UPDATE SET user_data = $2, updated_at = NOW()`,
+                        [usernameLower, JSON.stringify(userData)]
+                    );
+                }
+                
+                await client.query('COMMIT');
+                return true;
+            } catch (error) {
+                await client.query('ROLLBACK');
+                throw error;
+            } finally {
+                client.release();
+            }
+        } catch (error) {
+            console.error('Error writing to Postgres:', error.message);
+            return false;
+        }
+    } else {
+        // Fall back to JSON file
+        const clientsPath = join(__dirname, 'clients.json');
+        try {
+            fs.writeFileSync(clientsPath, JSON.stringify(clients, null, 2), 'utf8');
+            return true;
+        } catch (error) {
+            console.error('Error writing clients.json:', error.message);
+            return false;
+        }
     }
 }
 
@@ -133,7 +231,7 @@ function hashPassword(password) {
 }
 
 // API endpoint to check username availability
-app.post('/api/users/check-username', (req, res) => {
+app.post('/api/users/check-username', async (req, res) => {
     const { username } = req.body;
     
     if (!username || typeof username !== 'string') {
@@ -147,14 +245,18 @@ app.post('/api/users/check-username', (req, res) => {
         });
     }
     
-    const clients = readClients();
-    const isAvailable = !clients[username.toLowerCase()];
-    
-    res.json({ available: isAvailable });
+    try {
+        const clients = await readClients();
+        const isAvailable = !clients[username.toLowerCase()];
+        res.json({ available: isAvailable });
+    } catch (error) {
+        console.error('Error checking username:', error);
+        res.status(500).json({ error: 'Error checking username availability' });
+    }
 });
 
 // API endpoint to create user profile
-app.post('/api/users/create', (req, res) => {
+app.post('/api/users/create', async (req, res) => {
     const { username, password } = req.body;
     
     if (!username || typeof username !== 'string') {
@@ -172,60 +274,71 @@ app.post('/api/users/create', (req, res) => {
         });
     }
     
-    const clients = readClients();
-    const usernameLower = username.toLowerCase();
-    
-    if (clients[usernameLower]) {
-        return res.status(409).json({ error: 'Username already taken' });
-    }
-    
-    // Create new user profile
-    clients[usernameLower] = {
-        username: username,
-        passwordHash: hashPassword(password),
-        alerts: [],
-        telegramLinked: false,
-        telegramChatId: null,
-        createdAt: Date.now()
-    };
-    
-    if (writeClients(clients)) {
-        res.json({ success: true, message: 'Profile created successfully' });
-    } else {
-        res.status(500).json({ error: 'Failed to create profile' });
+    try {
+        const clients = await readClients();
+        const usernameLower = username.toLowerCase();
+        
+        if (clients[usernameLower]) {
+            return res.status(409).json({ error: 'Username already taken' });
+        }
+        
+        // Create new user profile
+        clients[usernameLower] = {
+            username: username,
+            passwordHash: hashPassword(password),
+            alerts: [],
+            telegramLinked: false,
+            telegramChatId: null,
+            createdAt: Date.now()
+        };
+        
+        const success = await writeClients(clients);
+        if (success) {
+            res.json({ success: true, message: 'Profile created successfully' });
+        } else {
+            res.status(500).json({ error: 'Failed to create profile' });
+        }
+    } catch (error) {
+        console.error('Error creating user profile:', error);
+        res.status(500).json({ error: 'Error creating profile' });
     }
 });
 
 // API endpoint to authenticate user
-app.post('/api/users/login', (req, res) => {
+app.post('/api/users/login', async (req, res) => {
     const { username, password } = req.body;
     
     if (!username || !password) {
         return res.status(400).json({ error: 'Username and password are required' });
     }
     
-    const clients = readClients();
-    const usernameLower = username.toLowerCase();
-    const user = clients[usernameLower];
-    
-    if (!user) {
-        return res.status(401).json({ error: 'Invalid username or password' });
+    try {
+        const clients = await readClients();
+        const usernameLower = username.toLowerCase();
+        const user = clients[usernameLower];
+        
+        if (!user) {
+            return res.status(401).json({ error: 'Invalid username or password' });
+        }
+        
+        const passwordHash = hashPassword(password);
+        if (user.passwordHash !== passwordHash) {
+            return res.status(401).json({ error: 'Invalid username or password' });
+        }
+        
+        res.json({ 
+            success: true, 
+            username: user.username,
+            telegramLinked: user.telegramLinked || false
+        });
+    } catch (error) {
+        console.error('Error logging in user:', error);
+        res.status(500).json({ error: 'Error authenticating user' });
     }
-    
-    const passwordHash = hashPassword(password);
-    if (user.passwordHash !== passwordHash) {
-        return res.status(401).json({ error: 'Invalid username or password' });
-    }
-    
-    res.json({ 
-        success: true, 
-        username: user.username,
-        telegramLinked: user.telegramLinked || false
-    });
 });
 
 // API endpoint to save alerts to user profile
-app.post('/api/users/save-alerts', (req, res) => {
+app.post('/api/users/save-alerts', async (req, res) => {
     const { username, password, alerts } = req.body;
     
     if (!username || !password) {
@@ -236,60 +349,71 @@ app.post('/api/users/save-alerts', (req, res) => {
         return res.status(400).json({ error: 'Alerts must be an array' });
     }
     
-    const clients = readClients();
-    const usernameLower = username.toLowerCase();
-    const user = clients[usernameLower];
-    
-    if (!user) {
-        return res.status(401).json({ error: 'User not found' });
-    }
-    
-    const passwordHash = hashPassword(password);
-    if (user.passwordHash !== passwordHash) {
-        return res.status(401).json({ error: 'Invalid password' });
-    }
-    
-    // Save alerts to user profile
-    user.alerts = alerts;
-    user.updatedAt = Date.now();
-    
-    if (writeClients(clients)) {
-        res.json({ success: true, message: 'Alerts saved successfully' });
-    } else {
-        res.status(500).json({ error: 'Failed to save alerts' });
+    try {
+        const clients = await readClients();
+        const usernameLower = username.toLowerCase();
+        const user = clients[usernameLower];
+        
+        if (!user) {
+            return res.status(401).json({ error: 'User not found' });
+        }
+        
+        const passwordHash = hashPassword(password);
+        if (user.passwordHash !== passwordHash) {
+            return res.status(401).json({ error: 'Invalid password' });
+        }
+        
+        // Save alerts to user profile
+        user.alerts = alerts;
+        user.updatedAt = Date.now();
+        
+        const success = await writeClients(clients);
+        if (success) {
+            res.json({ success: true, message: 'Alerts saved successfully' });
+        } else {
+            res.status(500).json({ error: 'Failed to save alerts' });
+        }
+    } catch (error) {
+        console.error('Error saving alerts:', error);
+        res.status(500).json({ error: 'Error saving alerts' });
     }
 });
 
 // API endpoint to get user alerts
-app.post('/api/users/get-alerts', (req, res) => {
+app.post('/api/users/get-alerts', async (req, res) => {
     const { username, password } = req.body;
     
     if (!username || !password) {
         return res.status(400).json({ error: 'Username and password are required' });
     }
     
-    const clients = readClients();
-    const usernameLower = username.toLowerCase();
-    const user = clients[usernameLower];
-    
-    if (!user) {
-        return res.status(401).json({ error: 'User not found' });
+    try {
+        const clients = await readClients();
+        const usernameLower = username.toLowerCase();
+        const user = clients[usernameLower];
+        
+        if (!user) {
+            return res.status(401).json({ error: 'User not found' });
+        }
+        
+        const passwordHash = hashPassword(password);
+        if (user.passwordHash !== passwordHash) {
+            return res.status(401).json({ error: 'Invalid password' });
+        }
+        
+        res.json({ 
+            success: true, 
+            alerts: user.alerts || [],
+            telegramLinked: user.telegramLinked || false
+        });
+    } catch (error) {
+        console.error('Error getting alerts:', error);
+        res.status(500).json({ error: 'Error getting alerts' });
     }
-    
-    const passwordHash = hashPassword(password);
-    if (user.passwordHash !== passwordHash) {
-        return res.status(401).json({ error: 'Invalid password' });
-    }
-    
-    res.json({ 
-        success: true, 
-        alerts: user.alerts || [],
-        telegramLinked: user.telegramLinked || false
-    });
 });
 
 // API endpoint to receive Telegram webhook
-app.post('/api/telegram/webhook', (req, res) => {
+app.post('/api/telegram/webhook', async (req, res) => {
     try {
         const message = req.body.message;
         
@@ -308,31 +432,42 @@ app.post('/api/telegram/webhook', (req, res) => {
             const linkedUsername = parts.length > 1 ? parts[1].toLowerCase() : null;
             
             if (linkedUsername) {
-                const clients = readClients();
-                const user = clients[linkedUsername];
-                
-                if (user) {
-                    // Link Telegram to user profile
-                    user.telegramLinked = true;
-                    user.telegramChatId = chatId;
-                    user.updatedAt = Date.now();
+                try {
+                    const clients = await readClients();
+                    const user = clients[linkedUsername];
                     
-                    if (writeClients(clients)) {
-                        // Send confirmation message to user
+                    if (user) {
+                        // Link Telegram to user profile
+                        user.telegramLinked = true;
+                        user.telegramChatId = chatId;
+                        user.updatedAt = Date.now();
+                        
+                        const success = await writeClients(clients);
+                        if (success) {
+                            // Send confirmation message to user
+                            axios.post(`${TELEGRAM_API_URL}/sendMessage`, {
+                                chat_id: chatId,
+                                text: `✅ Successfully linked to profile "${user.username}"!\n\nYou will now receive alerts via Telegram when your saved alerts match new tokens.`
+                            }).catch(err => {
+                                console.error('Error sending Telegram message:', err.message);
+                            });
+                            
+                            console.log(`[Telegram] Linked chat ${chatId} to user ${linkedUsername}`);
+                        }
+                    } else {
+                        // User not found
                         axios.post(`${TELEGRAM_API_URL}/sendMessage`, {
                             chat_id: chatId,
-                            text: `✅ Successfully linked to profile "${user.username}"!\n\nYou will now receive alerts via Telegram when your saved alerts match new tokens.`
+                            text: '❌ User profile not found. Please make sure you clicked the link from your profile page.'
                         }).catch(err => {
                             console.error('Error sending Telegram message:', err.message);
                         });
-                        
-                        console.log(`[Telegram] Linked chat ${chatId} to user ${linkedUsername}`);
                     }
-                } else {
-                    // User not found
+                } catch (error) {
+                    console.error('Error processing Telegram link:', error);
                     axios.post(`${TELEGRAM_API_URL}/sendMessage`, {
                         chat_id: chatId,
-                        text: '❌ User profile not found. Please make sure you clicked the link from your profile page.'
+                        text: '❌ Error linking account. Please try again later.'
                     }).catch(err => {
                         console.error('Error sending Telegram message:', err.message);
                     });
@@ -356,31 +491,36 @@ app.post('/api/telegram/webhook', (req, res) => {
 });
 
 // API endpoint to check Telegram link status
-app.post('/api/users/check-telegram', (req, res) => {
+app.post('/api/users/check-telegram', async (req, res) => {
     const { username, password } = req.body;
     
     if (!username || !password) {
         return res.status(400).json({ error: 'Username and password are required' });
     }
     
-    const clients = readClients();
-    const usernameLower = username.toLowerCase();
-    const user = clients[usernameLower];
-    
-    if (!user) {
-        return res.status(401).json({ error: 'User not found' });
+    try {
+        const clients = await readClients();
+        const usernameLower = username.toLowerCase();
+        const user = clients[usernameLower];
+        
+        if (!user) {
+            return res.status(401).json({ error: 'User not found' });
+        }
+        
+        const passwordHash = hashPassword(password);
+        if (user.passwordHash !== passwordHash) {
+            return res.status(401).json({ error: 'Invalid password' });
+        }
+        
+        res.json({ 
+            success: true, 
+            telegramLinked: user.telegramLinked || false,
+            telegramChatId: user.telegramChatId || null
+        });
+    } catch (error) {
+        console.error('Error checking Telegram status:', error);
+        res.status(500).json({ error: 'Error checking Telegram status' });
     }
-    
-    const passwordHash = hashPassword(password);
-    if (user.passwordHash !== passwordHash) {
-        return res.status(401).json({ error: 'Invalid password' });
-    }
-    
-    res.json({ 
-        success: true, 
-        telegramLinked: user.telegramLinked || false,
-        telegramChatId: user.telegramChatId || null
-    });
 });
 
 // API endpoint to set Telegram webhook (admin/helper endpoint)
@@ -1554,8 +1694,8 @@ async function checkAlertsForToken(token) {
  */
 async function checkUserAlertsForToken(token) {
     try {
-        // Always read fresh client data from disk to ensure we have latest alerts
-        const clients = readClients();
+        // Always read fresh client data to ensure we have latest alerts
+        const clients = await readClients();
         
         if (!token || !token.mint) {
             console.warn('checkUserAlertsForToken: Invalid token data (missing mint)');

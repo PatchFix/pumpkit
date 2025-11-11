@@ -24,8 +24,8 @@
                         Edit
                     </button>
                     <button type="button" class="btn btn-secondary" id="dmAlertsBtn">
-                        <span class="btn-icon">💬</span>
-                        DM Link
+                        <span class="btn-icon">🔑</span>
+                        Login
                     </button>
                 </div>
             </div>
@@ -356,8 +356,20 @@
             </div>
             <div class="modal-body">
                 <div class="dm-alerts-slideshow-container">
-                    <!-- Slide 1: Username Entry -->
+                     <!-- Slide 0: Choose Action (Create Profile or Login) -->
                     <div class="dm-alerts-slide active" data-slide="0">
+                        <h3 style="margin-bottom: 1rem; color: var(--text-primary);">DM Alerts</h3>
+                        <p style="margin-bottom: 2rem; color: var(--text-secondary); font-size: 0.9rem; text-align: center;">
+                            Save your alerts and receive notifications via Telegram.
+                        </p>
+                        <div class="modal-actions" style="flex-direction: column; gap: 1rem; margin-top: 2rem;">
+                            <button type="button" class="btn btn-primary" id="createProfileOptionBtn" style="width: 100%;">Create New Profile</button>
+                            <button type="button" class="btn btn-secondary" id="loginOptionBtn" style="width: 100%;">Log In</button>
+                        </div>
+                    </div>
+
+                    <!-- Slide 1: Username Entry (Create Profile) -->
+                    <div class="dm-alerts-slide" data-slide="1">
                         <h3 style="margin-bottom: 1rem; color: var(--text-primary);">Create Profile</h3>
                         <p style="margin-bottom: 1.5rem; color: var(--text-secondary); font-size: 0.9rem;">
                             Choose a username to save your alerts and link to Telegram.
@@ -378,12 +390,13 @@
                             <div id="usernameError" style="color: var(--danger); font-size: 0.75rem; margin-top: 0.5rem; display: none;"></div>
                         </div>
                         <div class="modal-actions" style="margin-top: 1.5rem;">
+                            <button type="button" class="btn btn-secondary" id="backToOptionsBtn">Back</button>
                             <button type="button" class="btn btn-primary" id="checkUsernameBtn">Check Availability</button>
                         </div>
                     </div>
 
-                    <!-- Slide 2: Password Entry -->
-                    <div class="dm-alerts-slide" data-slide="1">
+                    <!-- Slide 2: Password Entry (Create Profile) -->
+                    <div class="dm-alerts-slide" data-slide="2">
                         <h3 style="margin-bottom: 1rem; color: var(--text-primary);">Set Password</h3>
                         <p style="margin-bottom: 1.5rem; color: var(--text-secondary); font-size: 0.9rem;">
                             Username <span id="confirmedUsername" style="color: var(--success); font-weight: 600;"></span> is available!
@@ -408,8 +421,8 @@
                         </div>
                     </div>
 
-                    <!-- Slide 3: Profile Created / Login -->
-                    <div class="dm-alerts-slide" data-slide="2">
+                    <!-- Slide 3: Login / Profile Management -->
+                    <div class="dm-alerts-slide" data-slide="3">
                         <h3 style="margin-bottom: 1rem; color: var(--text-primary);">Profile Management</h3>
                         <div id="profileCreatedMessage" style="display: none; margin-bottom: 1.5rem; padding: 1rem; background: rgba(74, 222, 128, 0.1); border: 1px solid var(--success); border-radius: var(--radius-sm); color: var(--success);">
                             Profile created successfully!
@@ -440,6 +453,7 @@
                                 <div id="loginError" style="color: var(--danger); font-size: 0.75rem; margin-top: 0.5rem; display: none;"></div>
                             </div>
                             <div class="modal-actions">
+                                <button type="button" class="btn btn-secondary" id="backToOptionsFromLoginBtn">Back</button>
                                 <button type="button" class="btn btn-primary" id="loginBtn">Log In</button>
                             </div>
                         </div>
@@ -447,14 +461,9 @@
                             <p style="margin-bottom: 1.5rem; color: var(--text-secondary); font-size: 0.9rem;">
                                 Logged in as: <span id="loggedInUsername" style="color: var(--success); font-weight: 600;"></span>
                             </p>
-                            <div id="unsyncedAlertsNotice" style="display: none; margin-bottom: 1rem; padding: 0.75rem; background: rgba(251, 191, 36, 0.1); border: 1px solid var(--warning); border-radius: var(--radius-sm); color: var(--warning); font-size: 0.875rem;">
-                                ⚠️ You have unsaved alerts. Save them to receive Telegram notifications.
-                            </div>
                             <div class="modal-actions" style="flex-direction: column; gap: 0.75rem;">
-                                <button type="button" class="btn btn-primary" id="saveAlertsBtn" style="width: 100%;">Save Alerts to Profile</button>
                                 <button type="button" class="btn btn-secondary" id="linkTelegramBtn" style="width: 100%; opacity: 0.6; cursor: not-allowed;" disabled>
-                                    <span>Link to Telegram</span>
-                                    <span id="linkTelegramBadge" class="alert-badge" style="display: none; margin-left: 0.5rem; padding: 0.125rem 0.375rem; background: var(--warning); color: var(--text-primary); border-radius: 12px; font-size: 0.75rem; font-weight: 600;">!</span>
+                                    Link to Telegram
                                 </button>
                                 <button type="button" class="btn btn-secondary" id="logoutBtn" style="width: 100%;">Log Out</button>
                             </div>

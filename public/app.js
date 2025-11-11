@@ -140,9 +140,12 @@ class AlertApp {
         };
         this.audioContext = null; // Will be initialized
         this.initElements();
-        // Load alerts and settings from localStorage before initializing socket
-        this.loadAlertsFromStorage();
+        // Load settings from localStorage before initializing socket
         this.loadSettingsFromStorage();
+        // Load user session from localStorage if available
+        this.loadUserSessionFromStorage();
+        // Load dex tokens from localStorage (always local, not saved to profile)
+        this.loadDexTokensFromStorage();
         this.initAlertSound();
         this.initSocket();
         this.initEventListeners();
@@ -287,12 +290,15 @@ class AlertApp {
         this.usernameInput = document.getElementById('usernameInput');
         this.passwordInput = document.getElementById('passwordInput');
         this.checkUsernameBtn = document.getElementById('checkUsernameBtn');
+        this.createProfileOptionBtn = document.getElementById('createProfileOptionBtn');
+        this.loginOptionBtn = document.getElementById('loginOptionBtn');
         this.createProfileBtn = document.getElementById('createProfileBtn');
         this.backToUsernameBtn = document.getElementById('backToUsernameBtn');
+        this.backToOptionsBtn = document.getElementById('backToOptionsBtn');
+        this.backToOptionsFromLoginBtn = document.getElementById('backToOptionsFromLoginBtn');
         this.loginBtn = document.getElementById('loginBtn');
         this.loginUsername = document.getElementById('loginUsername');
         this.loginPassword = document.getElementById('loginPassword');
-        this.saveAlertsBtn = document.getElementById('saveAlertsBtn');
         this.linkTelegramBtn = document.getElementById('linkTelegramBtn');
         this.logoutBtn = document.getElementById('logoutBtn');
         
@@ -339,8 +345,13 @@ class AlertApp {
             this.statusText.textContent = 'Connected';
             this.statusEl.className = 'status-indicator connected';
             this.canvasAnimations.updateStatus(true);
-            // Load alerts from localStorage instead of server
-            this.loadAlertsFromStorage();
+            // Load alerts from server if logged in, otherwise start with empty alerts
+            if (this.currentUser) {
+                this.loadAlertsFromServer();
+            } else {
+                this.alerts = [];
+                this.renderAlerts();
+            }
         });
 
         this.socket.on('solana:price', (data) => {
@@ -372,7 +383,30 @@ class AlertApp {
 
         // Listen for token updates and check alerts
         this.socket.on('token:update', (tokenData) => {
+            // Update matched tokens in real-time if they exist
+            if (this.matchedTokens.has(tokenData.mint)) {
+                this.updateMatchedToken(tokenData);
+            }
+            // Also check for new alert matches
             this.checkAlertsForToken(tokenData, false); // false = not a new token (trade update)
+        });
+        
+        // Listen for token completion (migration)
+        this.socket.on('token:complete', (tokenData) => {
+            // Update matched token if it exists
+            if (this.matchedTokens.has(tokenData.mint)) {
+                this.updateMatchedToken(tokenData);
+            }
+        });
+        
+        // Listen for token removal (token no longer tracked)
+        this.socket.on('token:remove', (data) => {
+            if (data.mint && this.matchedTokens.has(data.mint)) {
+                // Optionally remove the token from matched tokens when it's removed from the server
+                // For now, we'll keep it in the matched tokens list even after removal
+                // Uncomment the line below if you want to auto-remove matched tokens when they're removed from the server
+                // this.deleteMatchedToken(data.mint);
+            }
         });
 
         // Listen for dex token data from server
@@ -383,6 +417,7 @@ class AlertApp {
                 if (!this.dexScreenerStatuses.has(data.slot)) {
                     this.dexScreenerStatuses.set(data.slot, new Set());
                 }
+                this.saveDexTokensToStorage(); // Save to localStorage
                 this.renderDexTokens();
                 // Start updates if not already running
                 if (!this.dexTokenUpdateInterval) {
@@ -417,32 +452,180 @@ class AlertApp {
         });
     }
 
-    loadAlertsFromStorage() {
+    async loadAlertsFromServer() {
+        if (!this.currentUser) return;
+        
         try {
-            const stored = localStorage.getItem('tokenAlerts');
-            if (stored) {
-                this.alerts = JSON.parse(stored);
-                // Ensure all alerts have IDs
-                this.alerts = this.alerts.map(alert => {
-                    if (!alert.id) {
-                        alert.id = `alert_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-                    }
-                    return alert;
-                });
-                this.saveAlertsToStorage();
+            const response = await fetch('/api/users/get-alerts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    username: this.currentUser.username,
+                    password: this.currentUser.password
+                })
+            });
+            
+            const data = await response.json();
+            if (response.ok && data.success) {
+                this.alerts = data.alerts || [];
                 this.renderAlerts();
             }
         } catch (error) {
-            console.error('Error loading alerts from localStorage:', error);
+            console.error('Error loading alerts from server:', error);
             this.alerts = [];
+            this.renderAlerts();
         }
     }
 
-    saveAlertsToStorage() {
+    loadUserSessionFromStorage() {
         try {
-            localStorage.setItem('tokenAlerts', JSON.stringify(this.alerts));
+            const stored = localStorage.getItem('userSession');
+            if (stored) {
+                const session = JSON.parse(stored);
+                if (session.username && session.password) {
+                    // Restore user session
+                    this.currentUser = {
+                        username: session.username,
+                        password: session.password
+                    };
+                    // Verify session is still valid (async, will update UI when complete)
+                    // Alerts will be loaded when socket connects if session is valid
+                    this.verifyAndRestoreSession().catch(error => {
+                        console.error('Error verifying session:', error);
+                    });
+                }
+            }
         } catch (error) {
-            console.error('Error saving alerts to localStorage:', error);
+            console.error('Error loading user session from localStorage:', error);
+            // Clear invalid session
+            localStorage.removeItem('userSession');
+        }
+    }
+
+    saveUserSessionToStorage() {
+        if (this.currentUser) {
+            try {
+                localStorage.setItem('userSession', JSON.stringify({
+                    username: this.currentUser.username,
+                    password: this.currentUser.password
+                }));
+            } catch (error) {
+                console.error('Error saving user session to localStorage:', error);
+            }
+        }
+    }
+
+    clearUserSessionFromStorage() {
+        try {
+            localStorage.removeItem('userSession');
+        } catch (error) {
+            console.error('Error clearing user session from localStorage:', error);
+        }
+    }
+
+    async verifyAndRestoreSession() {
+        if (!this.currentUser) return;
+        
+        try {
+            // Verify session is still valid by checking if user can get alerts
+            const response = await fetch('/api/users/get-alerts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    username: this.currentUser.username,
+                    password: this.currentUser.password
+                })
+            });
+            
+            const data = await response.json();
+            if (response.ok && data.success) {
+                // Session is valid
+                // Update modal UI if it exists
+                const loggedInUsername = document.getElementById('loggedInUsername');
+                if (loggedInUsername) loggedInUsername.textContent = this.currentUser.username;
+                
+                // Update login button text
+                this.updateLoginButtonText();
+                
+                // Check Telegram status
+                this.checkTelegramStatus();
+                
+                // If socket is already connected, load alerts now
+                // Otherwise, alerts will be loaded when socket connects
+                if (this.socket && this.socket.connected) {
+                    this.loadAlertsFromServer();
+                }
+            } else {
+                // Session is invalid, clear it
+                this.currentUser = null;
+                this.clearUserSessionFromStorage();
+                // Update login button text
+                this.updateLoginButtonText();
+                // Clear alerts if session is invalid
+                this.alerts = [];
+                this.renderAlerts();
+            }
+        } catch (error) {
+            console.error('Error verifying user session:', error);
+            // On error, keep the session and let socket connection handle alert loading
+        }
+    }
+
+    async autoSaveAlerts() {
+        // Only auto-save if user is logged in
+        if (!this.currentUser) return;
+        
+        try {
+            const response = await fetch('/api/users/save-alerts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    username: this.currentUser.username,
+                    password: this.currentUser.password,
+                    alerts: this.alerts
+                })
+            });
+            
+            const data = await response.json();
+            if (!response.ok || !data.success) {
+                console.error('Error auto-saving alerts:', data.error);
+            }
+        } catch (error) {
+            console.error('Error auto-saving alerts:', error);
+        }
+    }
+
+    loadDexTokensFromStorage() {
+        try {
+            const stored = localStorage.getItem('dexTokens');
+            if (stored) {
+                const dexTokensData = JSON.parse(stored);
+                // Convert array back to Map
+                this.dexTokens = new Map();
+                if (Array.isArray(dexTokensData)) {
+                    dexTokensData.forEach(([slot, token]) => {
+                        this.dexTokens.set(slot, token);
+                    });
+                } else if (typeof dexTokensData === 'object') {
+                    // Handle object format (backward compatibility)
+                    Object.entries(dexTokensData).forEach(([slot, token]) => {
+                        this.dexTokens.set(parseInt(slot), token);
+                    });
+                }
+            }
+        } catch (error) {
+            console.error('Error loading dex tokens from localStorage:', error);
+            this.dexTokens = new Map();
+        }
+    }
+
+    saveDexTokensToStorage() {
+        try {
+            // Convert Map to array for storage
+            const dexTokensArray = Array.from(this.dexTokens.entries());
+            localStorage.setItem('dexTokens', JSON.stringify(dexTokensArray));
+        } catch (error) {
+            console.error('Error saving dex tokens to localStorage:', error);
         }
     }
 
@@ -592,17 +775,32 @@ class AlertApp {
         if (this.checkUsernameBtn) {
             this.checkUsernameBtn.addEventListener('click', () => this.checkUsername());
         }
+        if (this.createProfileOptionBtn) {
+            this.createProfileOptionBtn.addEventListener('click', () => this.showDmAlertsSlide(1));
+        }
+        if (this.loginOptionBtn) {
+            this.loginOptionBtn.addEventListener('click', () => {
+                this.showDmAlertsSlide(3);
+                const loginForm = document.getElementById('loginForm');
+                const profileActions = document.getElementById('profileActions');
+                if (loginForm) loginForm.style.display = 'block';
+                if (profileActions) profileActions.style.display = 'none';
+            });
+        }
         if (this.createProfileBtn) {
             this.createProfileBtn.addEventListener('click', () => this.createProfile());
         }
         if (this.backToUsernameBtn) {
-            this.backToUsernameBtn.addEventListener('click', () => this.showDmAlertsSlide(0));
+            this.backToUsernameBtn.addEventListener('click', () => this.showDmAlertsSlide(1));
+        }
+        if (this.backToOptionsBtn) {
+            this.backToOptionsBtn.addEventListener('click', () => this.showDmAlertsSlide(0));
+        }
+        if (this.backToOptionsFromLoginBtn) {
+            this.backToOptionsFromLoginBtn.addEventListener('click', () => this.showDmAlertsSlide(0));
         }
         if (this.loginBtn) {
             this.loginBtn.addEventListener('click', () => this.loginUser());
-        }
-        if (this.saveAlertsBtn) {
-            this.saveAlertsBtn.addEventListener('click', () => this.saveAlertsToProfile());
         }
         if (this.logoutBtn) {
             this.logoutBtn.addEventListener('click', () => this.logoutUser());
@@ -906,12 +1104,11 @@ class AlertApp {
                 createdAt: Date.now()
             };
             this.alerts.push(newAlert);
-            this.saveAlertsToStorage();
             this.renderAlerts();
             
-            // Check sync status if logged in
+            // Auto-save to profile if logged in
             if (this.currentUser) {
-                this.checkAlertsSync();
+                this.autoSaveAlerts();
             }
             
             // Reset and close modal
@@ -1356,6 +1553,7 @@ class AlertApp {
     deleteDexToken(slot) {
         this.dexTokens.delete(slot);
         this.dexScreenerStatuses.delete(slot);
+        this.saveDexTokensToStorage(); // Save to localStorage
         this.renderDexTokens();
         // If no tokens left, stop the update intervals
         if (this.dexTokens.size === 0) {
@@ -1492,6 +1690,7 @@ class AlertApp {
         // Update token with status
         token.dexScreenerStatus = status;
         this.dexTokens.set(slot, token);
+        this.saveDexTokensToStorage(); // Save to localStorage
 
         // Handle positive statuses (processing, approved) - play alert once per status
         if ((status === 'processing' || status === 'approved') && !hadStatus) {
@@ -1582,7 +1781,6 @@ class AlertApp {
     confirmDeleteAlert() {
         if (this.pendingDeleteId) {
             this.alerts = this.alerts.filter(alert => alert.id !== this.pendingDeleteId);
-            this.saveAlertsToStorage();
             this.renderAlerts();
             // Update modal if open
             if (this.editAlertsModal.classList.contains('active')) {
@@ -1590,9 +1788,9 @@ class AlertApp {
             }
             this.pendingDeleteId = null;
             
-            // Check sync status if logged in
+            // Auto-save to profile if logged in
             if (this.currentUser) {
-                this.checkAlertsSync();
+                this.autoSaveAlerts();
             }
         }
         this.closeDeleteConfirmModal();
@@ -1623,16 +1821,15 @@ class AlertApp {
         const alert = this.alerts.find(a => a.id === id);
         if (alert) {
             alert.enabled = !alert.enabled;
-            this.saveAlertsToStorage();
             this.renderAlerts();
             // Update modal if open
             if (this.editAlertsModal.classList.contains('active')) {
                 this.renderAlertsInModal();
             }
             
-            // Check sync status if logged in
+            // Auto-save to profile if logged in
             if (this.currentUser) {
-                this.checkAlertsSync();
+                this.autoSaveAlerts();
             }
         }
     }
@@ -2060,7 +2257,153 @@ class AlertApp {
         `;
     }
 
+    updateMatchedToken(tokenData) {
+        // Update the token data in matchedTokens map
+        const existingToken = this.matchedTokens.get(tokenData.mint);
+        if (existingToken) {
+            // Merge new data while preserving alert info and tracking data
+            const updatedToken = {
+                ...existingToken,
+                ...tokenData,
+                // Preserve alert-specific data
+                triggeredAt: existingToken.triggeredAt,
+                alertId: existingToken.alertId,
+                // Preserve tracking data for pulse animations
+                _lastBuys: existingToken._lastBuys !== undefined ? existingToken._lastBuys : (existingToken.totalBuys || 0),
+                _lastSells: existingToken._lastSells !== undefined ? existingToken._lastSells : (existingToken.totalSells || 0),
+                // Preserve allTimeHigh if not in update
+                allTimeHigh: tokenData.allTimeHigh || existingToken.allTimeHigh || tokenData.value || tokenData.marketCapSol || 0
+            };
+            
+            // Update the map
+            this.matchedTokens.set(tokenData.mint, updatedToken);
+            
+            // Update the card in place without full re-render
+            this.updateMatchedTokenCard(tokenData.mint);
+        }
+    }
+    
+    updateMatchedTokenCard(mint) {
+        const token = this.matchedTokens.get(mint);
+        if (!token) return;
+        
+        const card = this.matchedTokensContainer.querySelector(`.token-card[data-mint="${mint}"]`);
+        if (!card) return;
+        
+        // Update marketcap
+        const marketCapUSD = token.marketCapUSD || (token.marketCapSol || token.value || 0) * this.solanaPriceUSD;
+        const marketCapFormatted = marketCapUSD ? `$${marketCapUSD.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})}` : '$0';
+        const marketCapEl = card.querySelector('.token-marketcap');
+        if (marketCapEl) {
+            marketCapEl.textContent = marketCapFormatted;
+        }
+        
+        // Update metrics row
+        const metricsRow = card.querySelector('.token-metrics-row');
+        if (metricsRow) {
+            const metrics = [];
+            
+            // Dev Buy %
+            const devBuyPercent = token.devBuy && token.devBuy > 0 ? 
+                ((token.devBuy / 1000000000) * 100).toFixed(2) : null;
+            if (devBuyPercent) {
+                metrics.push(`👤 ${devBuyPercent}%`);
+            }
+            
+            // Buys / Sells
+            if (token.totalBuys !== undefined || token.totalSells !== undefined) {
+                metrics.push(`📊 ${token.totalBuys || 0} / ${token.totalSells || 0}`);
+            }
+            
+            // Volume
+            if (token.buyVolume !== undefined || token.sellVolume !== undefined) {
+                const totalVolumeSOL = (token.buyVolume || 0) + (token.sellVolume || 0);
+                const totalVolumeUSD = totalVolumeSOL * this.solanaPriceUSD;
+                metrics.push(`💹 ${this.formatUSD(totalVolumeUSD)}`);
+            }
+            
+            // Update metrics row HTML
+            metricsRow.innerHTML = metrics.map(metric => 
+                `<div class="token-metric">${metric}</div>`
+            ).join('');
+        }
+        
+        // Update social links if they changed
+        const hasTwitter = token.twitter && token.twitter.trim().length > 0;
+        const hasWebsite = token.website && token.website.trim().length > 0;
+        const hasTelegram = token.telegram && token.telegram.trim().length > 0;
+        
+        const twitterLink = card.querySelector('.social-link.twitter');
+        if (twitterLink) {
+            if (hasTwitter) {
+                twitterLink.href = token.twitter;
+                twitterLink.classList.remove('disabled');
+                twitterLink.setAttribute('onclick', 'event.stopPropagation();');
+            } else {
+                twitterLink.href = '#';
+                twitterLink.classList.add('disabled');
+                twitterLink.setAttribute('onclick', 'event.stopPropagation(); return false;');
+            }
+        }
+        
+        const websiteLink = card.querySelector('.social-link.website');
+        if (websiteLink) {
+            if (hasWebsite) {
+                websiteLink.href = token.website;
+                websiteLink.classList.remove('disabled');
+                websiteLink.setAttribute('onclick', 'event.stopPropagation();');
+            } else {
+                websiteLink.href = '#';
+                websiteLink.classList.add('disabled');
+                websiteLink.setAttribute('onclick', 'event.stopPropagation(); return false;');
+            }
+        }
+        
+        const telegramLink = card.querySelector('.social-link.telegram');
+        if (telegramLink) {
+            if (hasTelegram) {
+                telegramLink.href = token.telegram;
+                telegramLink.classList.remove('disabled');
+                telegramLink.setAttribute('onclick', 'event.stopPropagation();');
+            } else {
+                telegramLink.href = '#';
+                telegramLink.classList.add('disabled');
+                telegramLink.setAttribute('onclick', 'event.stopPropagation(); return false;');
+            }
+        }
+        
+        // Add pulse animation for new buys/sells if detected
+        const previousBuys = token._lastBuys || 0;
+        const previousSells = token._lastSells || 0;
+        const newBuys = (token.totalBuys || 0) - previousBuys;
+        const newSells = (token.totalSells || 0) - previousSells;
+        
+        if (newBuys > 0) {
+            card.classList.add('pulse-buy');
+            setTimeout(() => card.classList.remove('pulse-buy'), 1000);
+        }
+        if (newSells > 0) {
+            card.classList.add('pulse-sell');
+            setTimeout(() => card.classList.remove('pulse-sell'), 1000);
+        }
+        
+        // Store current values for next comparison (update in the map)
+        const updatedToken = this.matchedTokens.get(mint);
+        if (updatedToken) {
+            updatedToken._lastBuys = token.totalBuys || 0;
+            updatedToken._lastSells = token.totalSells || 0;
+        }
+        
+        // Add gold glow if token is complete
+        if (token.complete) {
+            card.classList.add('token-complete');
+        } else {
+            card.classList.remove('token-complete');
+        }
+    }
+    
     updateTokenCardValues(card, token) {
+        // This method is kept for backwards compatibility but may not be used for matched tokens
         // Update Dev Buy %
         const devBuyPercent = token.devBuy && token.devBuy > 0 ? 
             ((token.devBuy / 1000000000) * 100).toFixed(2) : null;
@@ -2302,19 +2645,17 @@ class AlertApp {
         // Update matched token if it exists (even if no new alert triggered)
         // This ensures buys/sells data is always up to date
         if (this.matchedTokens.has(token.mint)) {
-            const existingToken = this.matchedTokens.get(token.mint);
-            this.matchedTokens.set(token.mint, {
-                ...token,
-                triggeredAt: existingToken.triggeredAt || Date.now(),
-                alertId: matchedAlertId || existingToken.alertId
-            });
-            this.renderMatchedTokens();
+            // Token already exists, update it in place (real-time update)
+            this.updateMatchedToken(token);
         } else if (alertTriggered) {
             // Add new matched token
             this.matchedTokens.set(token.mint, {
                 ...token,
                 triggeredAt: Date.now(),
-                alertId: matchedAlertId
+                alertId: matchedAlertId,
+                // Initialize tracking for pulse animations
+                _lastBuys: token.totalBuys || 0,
+                _lastSells: token.totalSells || 0
             });
             this.renderMatchedTokens();
         }
@@ -2325,21 +2666,25 @@ class AlertApp {
         this.dmAlertsModal.classList.add('active');
         document.body.style.overflow = 'hidden';
         
-        // Reset to first slide if not logged in
+        // Reset to first slide (choose action) if not logged in
         if (!this.currentUser) {
             this.showDmAlertsSlide(0);
-            // Show login form if not logged in
+            // Hide login form and profile actions
             const loginForm = document.getElementById('loginForm');
             const profileActions = document.getElementById('profileActions');
-            if (loginForm) loginForm.style.display = 'block';
+            const profileCreatedMessage = document.getElementById('profileCreatedMessage');
+            if (loginForm) loginForm.style.display = 'none';
             if (profileActions) profileActions.style.display = 'none';
+            if (profileCreatedMessage) profileCreatedMessage.style.display = 'none';
         } else {
-            // Show profile actions if logged in
-            this.showDmAlertsSlide(2);
+            // Show profile actions if logged in (slide 3)
+            this.showDmAlertsSlide(3);
             const loginForm = document.getElementById('loginForm');
             const profileActions = document.getElementById('profileActions');
+            const profileCreatedMessage = document.getElementById('profileCreatedMessage');
             if (loginForm) loginForm.style.display = 'none';
             if (profileActions) profileActions.style.display = 'block';
+            if (profileCreatedMessage) profileCreatedMessage.style.display = 'none';
             const loggedInUsername = document.getElementById('loggedInUsername');
             if (loggedInUsername) loggedInUsername.textContent = this.currentUser.username;
         }
@@ -2398,7 +2743,7 @@ class AlertApp {
                 this.pendingUsername = username;
                 const confirmedUsername = document.getElementById('confirmedUsername');
                 if (confirmedUsername) confirmedUsername.textContent = username;
-                this.showDmAlertsSlide(1);
+                this.showDmAlertsSlide(2); // Go to password entry slide
             } else {
                 if (errorDiv) {
                     errorDiv.textContent = data.error || 'Username is not available';
@@ -2441,6 +2786,8 @@ class AlertApp {
             if (response.ok && data.success) {
                 // Store user session
                 this.currentUser = { username, password };
+                // Save session to localStorage
+                this.saveUserSessionToStorage();
                 
                 // Show success message and profile actions
                 const profileCreatedMessage = document.getElementById('profileCreatedMessage');
@@ -2453,13 +2800,16 @@ class AlertApp {
                 if (profileActions) profileActions.style.display = 'block';
                 if (loggedInUsername) loggedInUsername.textContent = username;
                 
-                this.showDmAlertsSlide(2);
+                this.showDmAlertsSlide(3); // Go to profile management slide
+                
+                // Update login button text
+                this.updateLoginButtonText();
                 
                 // Check Telegram status and update button
                 this.checkTelegramStatus();
                 
-                // Check if alerts are synced
-                this.checkAlertsSync();
+                // Load alerts from server
+                this.loadAlertsFromServer();
                 
                 // Clear form
                 if (this.usernameInput) this.usernameInput.value = '';
@@ -2507,8 +2857,11 @@ class AlertApp {
             if (response.ok && data.success) {
                 // Store user session
                 this.currentUser = { username, password };
+                // Save session to localStorage
+                this.saveUserSessionToStorage();
                 
-                // Show profile actions
+                // Show profile actions on slide 3
+                this.showDmAlertsSlide(3);
                 const loginForm = document.getElementById('loginForm');
                 const profileActions = document.getElementById('profileActions');
                 const loggedInUsername = document.getElementById('loggedInUsername');
@@ -2519,11 +2872,14 @@ class AlertApp {
                 if (loggedInUsername) loggedInUsername.textContent = username;
                 if (profileCreatedMessage) profileCreatedMessage.style.display = 'none';
                 
+                // Update login button text
+                this.updateLoginButtonText();
+                
                 // Check Telegram status and update button
                 this.checkTelegramStatus();
                 
-                // Check if alerts are synced
-                this.checkAlertsSync();
+                // Load alerts from server
+                this.loadAlertsFromServer();
                 
                 // Clear login form
                 if (this.loginUsername) this.loginUsername.value = '';
@@ -2540,38 +2896,6 @@ class AlertApp {
                 errorDiv.textContent = 'Error logging in. Please try again.';
                 errorDiv.style.display = 'block';
             }
-        }
-    }
-    
-    async saveAlertsToProfile() {
-        if (!this.currentUser) {
-            this.showToast('Please log in first', 'warning');
-            return;
-        }
-        
-        try {
-            const response = await fetch('/api/users/save-alerts', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    username: this.currentUser.username,
-                    password: this.currentUser.password,
-                    alerts: this.alerts
-                })
-            });
-            
-            const data = await response.json();
-            
-            if (response.ok && data.success) {
-                this.showToast('Alerts saved successfully!', 'success');
-                // Update sync status after saving
-                this.checkAlertsSync();
-            } else {
-                this.showToast(data.error || 'Failed to save alerts', 'error');
-            }
-        } catch (error) {
-            console.error('Error saving alerts:', error);
-            this.showToast('Error saving alerts. Please try again.', 'error');
         }
     }
     
@@ -2638,73 +2962,24 @@ class AlertApp {
         return false;
     }
     
-    async checkAlertsSync() {
-        if (!this.currentUser) return;
+    updateLoginButtonText() {
+        if (!this.dmAlertsBtn) return;
         
-        try {
-            // Get server-side alerts
-            const response = await fetch('/api/users/get-alerts', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    username: this.currentUser.username,
-                    password: this.currentUser.password
-                })
-            });
-            
-            const data = await response.json();
-            
-            if (response.ok && data.success) {
-                const serverAlerts = data.alerts || [];
-                const clientAlerts = this.alerts || [];
-                
-                // Compare alerts (simple comparison by ID and count)
-                const serverAlertIds = new Set(serverAlerts.map(a => a.id));
-                const clientAlertIds = new Set(clientAlerts.map(a => a.id));
-                
-                const isSynced = serverAlerts.length === clientAlerts.length &&
-                    serverAlerts.every(alert => clientAlertIds.has(alert.id)) &&
-                    clientAlerts.every(alert => serverAlertIds.has(alert.id));
-                
-                this.updateUnsyncedAlertsUI(!isSynced);
-            }
-        } catch (error) {
-            console.error('Error checking alerts sync:', error);
+        if (this.currentUser) {
+            // Show username when logged in
+            this.dmAlertsBtn.innerHTML = `
+                <span class="btn-icon">👤</span>
+                ${this.escapeHtml(this.currentUser.username)}
+            `;
+        } else {
+            // Show "Login" when not logged in
+            this.dmAlertsBtn.innerHTML = `
+                <span class="btn-icon">🔑</span>
+                Login
+            `;
         }
     }
-    
-    updateUnsyncedAlertsUI(unsynced) {
-        const notice = document.getElementById('unsyncedAlertsNotice');
-        const badge = document.getElementById('linkTelegramBadge');
-        const dmAlertsBtn = this.dmAlertsBtn;
-        
-        if (notice) {
-            notice.style.display = unsynced ? 'block' : 'none';
-        }
-        
-        if (badge) {
-            badge.style.display = unsynced ? 'inline-block' : 'none';
-        }
-        
-        // Add badge to DM Alerts button in header
-        if (dmAlertsBtn) {
-            if (unsynced) {
-                if (!dmAlertsBtn.querySelector('.alert-badge')) {
-                    const headerBadge = document.createElement('span');
-                    headerBadge.className = 'alert-badge';
-                    headerBadge.textContent = '!';
-                    headerBadge.style.cssText = 'margin-left: 0.5rem; padding: 0.125rem 0.375rem; background: var(--warning); color: var(--text-primary); border-radius: 12px; font-size: 0.75rem; font-weight: 600;';
-                    dmAlertsBtn.appendChild(headerBadge);
-                }
-            } else {
-                const existingBadge = dmAlertsBtn.querySelector('.alert-badge');
-                if (existingBadge) {
-                    existingBadge.remove();
-                }
-            }
-        }
-    }
-    
+
     updateTelegramButtonState(linked) {
         if (!this.linkTelegramBtn) return;
         
@@ -2722,17 +2997,27 @@ class AlertApp {
             this.linkTelegramBtn.classList.remove('btn-success');
         }
         
-        // Re-add badge if needed
-        this.checkAlertsSync();
     }
     
     logoutUser() {
         this.currentUser = null;
+        // Clear session from localStorage
+        this.clearUserSessionFromStorage();
+        
+        // Update login button text
+        this.updateLoginButtonText();
+        
+        // Clear alerts when logging out (alerts are tied to user profile)
+        this.alerts = [];
+        this.renderAlerts();
+        
+        // Reset to slide 0 (choose action)
+        this.showDmAlertsSlide(0);
         const loginForm = document.getElementById('loginForm');
         const profileActions = document.getElementById('profileActions');
         const profileCreatedMessage = document.getElementById('profileCreatedMessage');
         
-        if (loginForm) loginForm.style.display = 'block';
+        if (loginForm) loginForm.style.display = 'none';
         if (profileActions) profileActions.style.display = 'none';
         if (profileCreatedMessage) profileCreatedMessage.style.display = 'none';
         

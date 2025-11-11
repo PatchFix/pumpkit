@@ -46,5 +46,38 @@
     "telegramLinked": false,
     "telegramChatId": null,
     "createdAt": 1762843539298
+  },
+  "testguy": {
+    "username": "testguy",
+    "passwordHash": "f0e4c2f76c58916ec258f246851bea091d14d4247a2fc3e18694461b1816e13b",
+    "alerts": [],
+    "telegramLinked": false,
+    "telegramChatId": null,
+    "createdAt": 1762886991455
+  },
+  "mrtest": {
+    "username": "mrtest",
+    "passwordHash": "f0e4c2f76c58916ec258f246851bea091d14d4247a2fc3e18694461b1816e13b",
+    "alerts": [
+      {
+        "id": "alert_1762887283512_0v2er0x27",
+        "type": "deployer-match",
+        "value": "asdf",
+        "name": "asdf",
+        "enabled": true,
+        "createdAt": 1762887283512
+      },
+      {
+        "id": "alert_1762887298156_c5ethsejl",
+        "type": "ticker-contains",
+        "value": "a",
+        "enabled": true,
+        "createdAt": 1762887298156
+      }
+    ],
+    "telegramLinked": false,
+    "telegramChatId": null,
+    "createdAt": 1762887265310,
+    "updatedAt": 1762887298159
   }
 }

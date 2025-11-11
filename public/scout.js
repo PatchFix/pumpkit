@@ -99,8 +99,12 @@ class ScoutApp {
             sortType: 'recent' // Default: Most Recent
         };
         
+        this.currentUser = null; // Store current user session
+        
         this.initElements();
         this.loadSettingsFromStorage();
+        // Load user session from localStorage
+        this.loadUserSessionFromStorage();
         // Apply saved sort type after loading settings
         if (this.settings.sortType) {
             this.currentSort = this.settings.sortType;
@@ -141,6 +145,7 @@ class ScoutApp {
         this.helpModal = document.getElementById('helpModal');
         this.closeHelpBtn = document.getElementById('closeHelpBtn');
         this.closeHelpBtn2 = document.getElementById('closeHelpBtn2');
+        this.loginBtn = document.getElementById('loginBtn');
     }
 
     initAlertSound() {
@@ -321,6 +326,13 @@ class ScoutApp {
     }
 
     initEventListeners() {
+        // Login button - redirect to alerts page for login
+        if (this.loginBtn) {
+            this.loginBtn.addEventListener('click', () => {
+                window.location.href = 'alerts.html';
+            });
+        }
+        
         // Sort button - open modal
         this.sortBtn.addEventListener('click', () => {
             this.openSortModal();
@@ -1348,6 +1360,93 @@ class ScoutApp {
         } catch (error) {
             console.error('Error saving settings to localStorage:', error);
         }
+    }
+
+    loadUserSessionFromStorage() {
+        try {
+            const stored = localStorage.getItem('userSession');
+            if (stored) {
+                const session = JSON.parse(stored);
+                if (session.username && session.password) {
+                    // Restore user session
+                    this.currentUser = {
+                        username: session.username,
+                        password: session.password
+                    };
+                    // Verify session is still valid (async, will update UI when complete)
+                    this.verifyAndRestoreSession().catch(error => {
+                        console.error('Error verifying session:', error);
+                    });
+                }
+            } else {
+                // No session, update button
+                this.updateLoginButtonText();
+            }
+        } catch (error) {
+            console.error('Error loading user session from localStorage:', error);
+            // Clear invalid session
+            localStorage.removeItem('userSession');
+            this.updateLoginButtonText();
+        }
+    }
+
+    async verifyAndRestoreSession() {
+        if (!this.currentUser) {
+            this.updateLoginButtonText();
+            return;
+        }
+        
+        try {
+            // Verify session is still valid by checking if user can get alerts
+            const response = await fetch('/api/users/get-alerts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    username: this.currentUser.username,
+                    password: this.currentUser.password
+                })
+            });
+            
+            const data = await response.json();
+            if (response.ok && data.success) {
+                // Session is valid
+                this.updateLoginButtonText();
+            } else {
+                // Session is invalid, clear it
+                this.currentUser = null;
+                localStorage.removeItem('userSession');
+                this.updateLoginButtonText();
+            }
+        } catch (error) {
+            console.error('Error verifying user session:', error);
+            // On error, keep the session and update button
+            this.updateLoginButtonText();
+        }
+    }
+
+    updateLoginButtonText() {
+        if (!this.loginBtn) return;
+        
+        if (this.currentUser) {
+            // Show username when logged in
+            this.loginBtn.innerHTML = `
+                <span class="btn-icon">👤</span>
+                ${this.escapeHtml(this.currentUser.username)}
+            `;
+        } else {
+            // Show "Login" when not logged in
+            this.loginBtn.innerHTML = `
+                <span class="btn-icon">🔑</span>
+                Login
+            `;
+        }
+    }
+
+    escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     }
 
     openSettingsModal() {
