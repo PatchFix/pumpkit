@@ -1,0 +1,50 @@
+{
+  "testname": {
+    "username": "TestName",
+    "passwordHash": "eddef9e8e578c2a560c3187c4152c8b6f3f90c1dcf8c88b386ac1a9a96079c2c",
+    "alerts": [
+      {
+        "id": "alert_1762842071105_bho24mm6e",
+        "type": "ticker-exact",
+        "value": "TEST",
+        "enabled": true,
+        "createdAt": 1762842071105
+      },
+      {
+        "id": "alert_1762842080417_43ei1r6o4",
+        "type": "twitter-handle",
+        "value": "bingbong",
+        "enabled": true,
+        "createdAt": 1762842080417
+      }
+    ],
+    "telegramLinked": false,
+    "telegramChatId": null,
+    "createdAt": 1762841998195,
+    "updatedAt": 1762842083745
+  },
+  "hello": {
+    "username": "Hello",
+    "passwordHash": "27e6f695d734689575e2a063b77668a1fab9c7a83071134630f6a02ebf697592",
+    "alerts": [],
+    "telegramLinked": false,
+    "telegramChatId": null,
+    "createdAt": 1762843375233
+  },
+  "asdf": {
+    "username": "asdf",
+    "passwordHash": "f0e4c2f76c58916ec258f246851bea091d14d4247a2fc3e18694461b1816e13b",
+    "alerts": [],
+    "telegramLinked": false,
+    "telegramChatId": null,
+    "createdAt": 1762843487180
+  },
+  "sadf": {
+    "username": "sadf",
+    "passwordHash": "f0e4c2f76c58916ec258f246851bea091d14d4247a2fc3e18694461b1816e13b",
+    "alerts": [],
+    "telegramLinked": false,
+    "telegramChatId": null,
+    "createdAt": 1762843539298
+  }
+}

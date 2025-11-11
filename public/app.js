@@ -282,7 +282,22 @@ class AlertApp {
         this.dmAlertsBtn = document.getElementById('dmAlertsBtn');
         this.dmAlertsModal = document.getElementById('dmAlertsModal');
         this.closeDmAlertsBtn = document.getElementById('closeDmAlertsBtn');
-        this.closeDmAlertsBtn2 = document.getElementById('closeDmAlertsBtn2');
+        
+        // DM Alerts slideshow elements
+        this.usernameInput = document.getElementById('usernameInput');
+        this.passwordInput = document.getElementById('passwordInput');
+        this.checkUsernameBtn = document.getElementById('checkUsernameBtn');
+        this.createProfileBtn = document.getElementById('createProfileBtn');
+        this.backToUsernameBtn = document.getElementById('backToUsernameBtn');
+        this.loginBtn = document.getElementById('loginBtn');
+        this.loginUsername = document.getElementById('loginUsername');
+        this.loginPassword = document.getElementById('loginPassword');
+        this.saveAlertsBtn = document.getElementById('saveAlertsBtn');
+        this.linkTelegramBtn = document.getElementById('linkTelegramBtn');
+        this.logoutBtn = document.getElementById('logoutBtn');
+        
+        // Current user session
+        this.currentUser = null;
         this.helpBtn = document.getElementById('helpBtn');
         this.helpModal = document.getElementById('helpModal');
         this.closeHelpBtn = document.getElementById('closeHelpBtn');
@@ -383,7 +398,7 @@ class AlertApp {
         // Listen for dex token error
         this.socket.on('dex:token:error', (data) => {
             if (data.slot !== undefined && data.error) {
-                alert(`Error fetching token: ${data.error}`);
+                this.showToast(`Error fetching token: ${data.error}`, 'error');
             }
         });
 
@@ -563,21 +578,58 @@ class AlertApp {
 
         // DM Alerts button - open modal
         this.dmAlertsBtn.addEventListener('click', () => {
-            this.dmAlertsModal.classList.add('active');
-            document.body.style.overflow = 'hidden';
+            this.openDmAlertsModal();
         });
 
-        // Close DM Alerts modal buttons
+        // Close DM Alerts modal button
         if (this.closeDmAlertsBtn) {
             this.closeDmAlertsBtn.addEventListener('click', () => {
-                this.dmAlertsModal.classList.remove('active');
-                document.body.style.overflow = '';
+                this.closeDmAlertsModal();
             });
         }
-        if (this.closeDmAlertsBtn2) {
-            this.closeDmAlertsBtn2.addEventListener('click', () => {
-                this.dmAlertsModal.classList.remove('active');
-                document.body.style.overflow = '';
+        
+        // DM Alerts slideshow handlers
+        if (this.checkUsernameBtn) {
+            this.checkUsernameBtn.addEventListener('click', () => this.checkUsername());
+        }
+        if (this.createProfileBtn) {
+            this.createProfileBtn.addEventListener('click', () => this.createProfile());
+        }
+        if (this.backToUsernameBtn) {
+            this.backToUsernameBtn.addEventListener('click', () => this.showDmAlertsSlide(0));
+        }
+        if (this.loginBtn) {
+            this.loginBtn.addEventListener('click', () => this.loginUser());
+        }
+        if (this.saveAlertsBtn) {
+            this.saveAlertsBtn.addEventListener('click', () => this.saveAlertsToProfile());
+        }
+        if (this.logoutBtn) {
+            this.logoutBtn.addEventListener('click', () => this.logoutUser());
+        }
+        if (this.linkTelegramBtn) {
+            this.linkTelegramBtn.addEventListener('click', () => this.linkTelegram());
+        }
+        
+        // Allow Enter key to submit forms
+        if (this.usernameInput) {
+            this.usernameInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') this.checkUsername();
+            });
+        }
+        if (this.passwordInput) {
+            this.passwordInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') this.createProfile();
+            });
+        }
+        if (this.loginUsername) {
+            this.loginUsername.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') this.loginUser();
+            });
+        }
+        if (this.loginPassword) {
+            this.loginPassword.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') this.loginUser();
             });
         }
 
@@ -2251,6 +2303,410 @@ class AlertApp {
             });
             this.renderMatchedTokens();
         }
+    }
+    
+    // DM Alerts Modal Methods
+    openDmAlertsModal() {
+        this.dmAlertsModal.classList.add('active');
+        document.body.style.overflow = 'hidden';
+        
+        // Reset to first slide if not logged in
+        if (!this.currentUser) {
+            this.showDmAlertsSlide(0);
+            // Show login form if not logged in
+            const loginForm = document.getElementById('loginForm');
+            const profileActions = document.getElementById('profileActions');
+            if (loginForm) loginForm.style.display = 'block';
+            if (profileActions) profileActions.style.display = 'none';
+        } else {
+            // Show profile actions if logged in
+            this.showDmAlertsSlide(2);
+            const loginForm = document.getElementById('loginForm');
+            const profileActions = document.getElementById('profileActions');
+            if (loginForm) loginForm.style.display = 'none';
+            if (profileActions) profileActions.style.display = 'block';
+            const loggedInUsername = document.getElementById('loggedInUsername');
+            if (loggedInUsername) loggedInUsername.textContent = this.currentUser.username;
+        }
+    }
+    
+    closeDmAlertsModal() {
+        this.dmAlertsModal.classList.remove('active');
+        document.body.style.overflow = '';
+    }
+    
+    showDmAlertsSlide(slideIndex) {
+        const slides = document.querySelectorAll('.dm-alerts-slide');
+        slides.forEach((slide, index) => {
+            if (index === slideIndex) {
+                slide.classList.add('active');
+            } else {
+                slide.classList.remove('active');
+            }
+        });
+    }
+    
+    async checkUsername() {
+        const username = this.usernameInput?.value.trim();
+        const errorDiv = document.getElementById('usernameError');
+        
+        if (!username) {
+            if (errorDiv) {
+                errorDiv.textContent = 'Please enter a username';
+                errorDiv.style.display = 'block';
+            }
+            return;
+        }
+        
+        // Validate format
+        if (username.length > 16 || !/^[a-zA-Z0-9]+$/.test(username)) {
+            if (errorDiv) {
+                errorDiv.textContent = 'Username must be up to 16 characters and contain only letters and numbers';
+                errorDiv.style.display = 'block';
+            }
+            return;
+        }
+        
+        if (errorDiv) errorDiv.style.display = 'none';
+        
+        try {
+            const response = await fetch('/api/users/check-username', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username })
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok && data.available) {
+                // Store username for next slide
+                this.pendingUsername = username;
+                const confirmedUsername = document.getElementById('confirmedUsername');
+                if (confirmedUsername) confirmedUsername.textContent = username;
+                this.showDmAlertsSlide(1);
+            } else {
+                if (errorDiv) {
+                    errorDiv.textContent = data.error || 'Username is not available';
+                    errorDiv.style.display = 'block';
+                }
+            }
+        } catch (error) {
+            console.error('Error checking username:', error);
+            if (errorDiv) {
+                errorDiv.textContent = 'Error checking username. Please try again.';
+                errorDiv.style.display = 'block';
+            }
+        }
+    }
+    
+    async createProfile() {
+        const username = this.pendingUsername;
+        const password = this.passwordInput?.value;
+        const errorDiv = document.getElementById('passwordError');
+        
+        if (!password || password.length < 4) {
+            if (errorDiv) {
+                errorDiv.textContent = 'Password must be at least 4 characters';
+                errorDiv.style.display = 'block';
+            }
+            return;
+        }
+        
+        if (errorDiv) errorDiv.style.display = 'none';
+        
+        try {
+            const response = await fetch('/api/users/create', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok && data.success) {
+                // Store user session
+                this.currentUser = { username, password };
+                
+                // Show success message and profile actions
+                const profileCreatedMessage = document.getElementById('profileCreatedMessage');
+                const loginForm = document.getElementById('loginForm');
+                const profileActions = document.getElementById('profileActions');
+                const loggedInUsername = document.getElementById('loggedInUsername');
+                
+                if (profileCreatedMessage) profileCreatedMessage.style.display = 'block';
+                if (loginForm) loginForm.style.display = 'none';
+                if (profileActions) profileActions.style.display = 'block';
+                if (loggedInUsername) loggedInUsername.textContent = username;
+                
+                this.showDmAlertsSlide(2);
+                
+                // Check Telegram status and update button
+                this.checkTelegramStatus();
+                
+                // Clear form
+                if (this.usernameInput) this.usernameInput.value = '';
+                if (this.passwordInput) this.passwordInput.value = '';
+                this.pendingUsername = null;
+            } else {
+                if (errorDiv) {
+                    errorDiv.textContent = data.error || 'Failed to create profile';
+                    errorDiv.style.display = 'block';
+                }
+            }
+        } catch (error) {
+            console.error('Error creating profile:', error);
+            if (errorDiv) {
+                errorDiv.textContent = 'Error creating profile. Please try again.';
+                errorDiv.style.display = 'block';
+            }
+        }
+    }
+    
+    async loginUser() {
+        const username = this.loginUsername?.value.trim();
+        const password = this.loginPassword?.value;
+        const errorDiv = document.getElementById('loginError');
+        
+        if (!username || !password) {
+            if (errorDiv) {
+                errorDiv.textContent = 'Please enter username and password';
+                errorDiv.style.display = 'block';
+            }
+            return;
+        }
+        
+        if (errorDiv) errorDiv.style.display = 'none';
+        
+        try {
+            const response = await fetch('/api/users/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok && data.success) {
+                // Store user session
+                this.currentUser = { username, password };
+                
+                // Show profile actions
+                const loginForm = document.getElementById('loginForm');
+                const profileActions = document.getElementById('profileActions');
+                const loggedInUsername = document.getElementById('loggedInUsername');
+                const profileCreatedMessage = document.getElementById('profileCreatedMessage');
+                
+                if (loginForm) loginForm.style.display = 'none';
+                if (profileActions) profileActions.style.display = 'block';
+                if (loggedInUsername) loggedInUsername.textContent = username;
+                if (profileCreatedMessage) profileCreatedMessage.style.display = 'none';
+                
+                // Check Telegram status and update button
+                this.checkTelegramStatus();
+                
+                // Clear login form
+                if (this.loginUsername) this.loginUsername.value = '';
+                if (this.loginPassword) this.loginPassword.value = '';
+            } else {
+                if (errorDiv) {
+                    errorDiv.textContent = data.error || 'Invalid username or password';
+                    errorDiv.style.display = 'block';
+                }
+            }
+        } catch (error) {
+            console.error('Error logging in:', error);
+            if (errorDiv) {
+                errorDiv.textContent = 'Error logging in. Please try again.';
+                errorDiv.style.display = 'block';
+            }
+        }
+    }
+    
+    async saveAlertsToProfile() {
+        if (!this.currentUser) {
+            this.showToast('Please log in first', 'warning');
+            return;
+        }
+        
+        try {
+            const response = await fetch('/api/users/save-alerts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    username: this.currentUser.username,
+                    password: this.currentUser.password,
+                    alerts: this.alerts
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok && data.success) {
+                this.showToast('Alerts saved successfully!', 'success');
+            } else {
+                this.showToast(data.error || 'Failed to save alerts', 'error');
+            }
+        } catch (error) {
+            console.error('Error saving alerts:', error);
+            this.showToast('Error saving alerts. Please try again.', 'error');
+        }
+    }
+    
+    linkTelegram() {
+        if (!this.currentUser) {
+            this.showToast('Please log in first', 'warning');
+            return;
+        }
+        
+        // Open Telegram with /start command and username parameter
+        const telegramUrl = `https://t.me/PFKit_bot?start=${encodeURIComponent(this.currentUser.username.toLowerCase())}`;
+        window.open(telegramUrl, '_blank');
+        
+        // Show info message
+        this.showToast('Opening Telegram... Click "Start" in the bot to link your account.', 'info');
+        
+        // Poll for Telegram link status every 2 seconds for up to 30 seconds
+        let pollCount = 0;
+        const maxPolls = 15; // 15 polls * 2 seconds = 30 seconds
+        
+        const pollInterval = setInterval(() => {
+            pollCount++;
+            this.checkTelegramStatus().then(linked => {
+                if (linked) {
+                    clearInterval(pollInterval);
+                } else if (pollCount >= maxPolls) {
+                    clearInterval(pollInterval);
+                    this.showToast('Link timeout. Please try again if you completed the linking process.', 'warning');
+                }
+            });
+        }, 2000);
+    }
+    
+    async checkTelegramStatus() {
+        if (!this.currentUser) return false;
+        
+        try {
+            const response = await fetch('/api/users/check-telegram', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    username: this.currentUser.username,
+                    password: this.currentUser.password
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok && data.success) {
+                const wasLinked = this.linkTelegramBtn?.textContent.includes('Linked');
+                this.updateTelegramButtonState(data.telegramLinked);
+                
+                // Only show success toast if it just became linked
+                if (data.telegramLinked && !wasLinked) {
+                    this.showToast('Telegram successfully linked!', 'success');
+                }
+                
+                return data.telegramLinked;
+            }
+        } catch (error) {
+            console.error('Error checking Telegram status:', error);
+        }
+        
+        return false;
+    }
+    
+    updateTelegramButtonState(linked) {
+        if (!this.linkTelegramBtn) return;
+        
+        if (linked) {
+            this.linkTelegramBtn.textContent = 'Telegram Linked ✓';
+            this.linkTelegramBtn.disabled = true;
+            this.linkTelegramBtn.style.opacity = '1';
+            this.linkTelegramBtn.style.cursor = 'default';
+            this.linkTelegramBtn.classList.add('btn-success');
+        } else {
+            this.linkTelegramBtn.textContent = 'Link to Telegram';
+            this.linkTelegramBtn.disabled = false;
+            this.linkTelegramBtn.style.opacity = '1';
+            this.linkTelegramBtn.style.cursor = 'pointer';
+            this.linkTelegramBtn.classList.remove('btn-success');
+        }
+    }
+    
+    logoutUser() {
+        this.currentUser = null;
+        const loginForm = document.getElementById('loginForm');
+        const profileActions = document.getElementById('profileActions');
+        const profileCreatedMessage = document.getElementById('profileCreatedMessage');
+        
+        if (loginForm) loginForm.style.display = 'block';
+        if (profileActions) profileActions.style.display = 'none';
+        if (profileCreatedMessage) profileCreatedMessage.style.display = 'none';
+        
+        // Reset Telegram button
+        if (this.linkTelegramBtn) {
+            this.linkTelegramBtn.textContent = 'Link to Telegram';
+            this.linkTelegramBtn.disabled = true;
+            this.linkTelegramBtn.style.opacity = '0.6';
+            this.linkTelegramBtn.style.cursor = 'not-allowed';
+            this.linkTelegramBtn.classList.remove('btn-success');
+        }
+        
+        // Clear login form
+        if (this.loginUsername) this.loginUsername.value = '';
+        if (this.loginPassword) this.loginPassword.value = '';
+    }
+    
+    showToast(message, type = 'success') {
+        // Remove existing toast if any
+        const existingToast = document.querySelector('.toast-notification');
+        if (existingToast) {
+            existingToast.remove();
+        }
+        
+        // Create toast element
+        const toast = document.createElement('div');
+        toast.className = `toast-notification toast-${type}`;
+        
+        // Add icon based on type
+        let icon = '✓';
+        if (type === 'error') {
+            icon = '✗';
+        } else if (type === 'warning') {
+            icon = '⚠';
+        } else if (type === 'info') {
+            icon = 'ℹ';
+        }
+        
+        toast.innerHTML = `
+            <div class="toast-content">
+                <span class="toast-icon">${icon}</span>
+                <span class="toast-message">${this.escapeHtml(message)}</span>
+            </div>
+        `;
+        
+        document.body.appendChild(toast);
+        
+        // Trigger animation
+        requestAnimationFrame(() => {
+            toast.classList.add('show');
+        });
+        
+        // Auto remove after 3 seconds
+        setTimeout(() => {
+            toast.classList.remove('show');
+            setTimeout(() => {
+                if (toast.parentNode) {
+                    toast.remove();
+                }
+            }, 300);
+        }, 3000);
+    }
+    
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     }
 }
 

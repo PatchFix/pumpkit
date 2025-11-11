@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Backend Tech Demo - PumpFun ToolKit</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #0a0a0a;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        .demo-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .demo-header {
+            background: rgba(26, 26, 26, 0.95);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+        }
+
+        .demo-title {
+            color: #fff;
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin: 0;
+        }
+
+        .demo-stats {
+            display: flex;
+            gap: 2rem;
+            color: #e0e0e0;
+            font-size: 0.875rem;
+        }
+
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .stat-label {
+            color: #888;
+            font-size: 0.75rem;
+        }
+
+        .stat-value {
+            color: #4ade80;
+            font-weight: 600;
+            font-size: 1rem;
+        }
+
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: rgba(26, 26, 26, 0.8);
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #ef4444;
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.connected {
+            background: #4ade80;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .demo-canvas-container {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            background: radial-gradient(ellipse at center, #1a1a1a 0%, #0a0a0a 100%);
+        }
+
+        #demoCanvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        .demo-sidebar {
+            position: absolute;
+            top: 80px;
+            right: 20px;
+            width: 300px;
+            background: rgba(26, 26, 26, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 1rem;
+            max-height: calc(100vh - 120px);
+            overflow-y: auto;
+            z-index: 50;
+            backdrop-filter: blur(10px);
+        }
+
+        .sidebar-section {
+            margin-bottom: 1.5rem;
+        }
+
+        .sidebar-title {
+            color: #fff;
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .event-log {
+            max-height: 200px;
+            overflow-y: auto;
+            font-size: 0.75rem;
+            font-family: 'Courier New', monospace;
+        }
+
+        .event-item {
+            padding: 0.5rem;
+            margin-bottom: 0.25rem;
+            border-radius: 4px;
+            background: rgba(255, 255, 255, 0.05);
+            color: #e0e0e0;
+            border-left: 3px solid transparent;
+        }
+
+        .event-item.token-new {
+            border-left-color: #60a5fa;
+        }
+
+        .event-item.token-update {
+            border-left-color: #4ade80;
+        }
+
+        .event-item.token-complete {
+            border-left-color: #fbbf24;
+        }
+
+        .event-item.token-remove {
+            border-left-color: #ef4444;
+        }
+
+        .event-item.migration-check {
+            border-left-color: #a78bfa;
+        }
+
+        .event-time {
+            color: #888;
+            font-size: 0.7rem;
+        }
+
+        .legend {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.75rem;
+            color: #e0e0e0;
+        }
+
+        .legend-circle {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            border: 2px solid;
+        }
+
+        .legend-circle.new {
+            background: rgba(96, 165, 250, 0.3);
+            border-color: #60a5fa;
+        }
+
+        .legend-circle.active {
+            background: rgba(74, 222, 128, 0.3);
+            border-color: #4ade80;
+        }
+
+        .legend-circle.complete {
+            background: rgba(251, 191, 36, 0.3);
+            border-color: #fbbf24;
+        }
+
+        .legend-circle.high-mc {
+            background: rgba(168, 85, 247, 0.3);
+            border-color: #a78bfa;
+        }
+
+        .token-info {
+            position: absolute;
+            background: rgba(26, 26, 26, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 0.75rem;
+            font-size: 0.75rem;
+            pointer-events: none;
+            z-index: 200;
+            display: none;
+            max-width: 250px;
+        }
+
+        .token-info.show {
+            display: block;
+        }
+
+        .token-info-name {
+            color: #fff;
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+
+        .token-info-detail {
+            color: #888;
+            margin: 0.125rem 0;
+        }
+
+        .token-info-value {
+            color: #4ade80;
+        }
+
+        @media (max-width: 768px) {
+            .demo-sidebar {
+                width: 250px;
+                right: 10px;
+                top: 70px;
+            }
+
+            .demo-stats {
+                gap: 1rem;
+                font-size: 0.75rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="demo-container">
+        <div class="demo-header">
+            <h1 class="demo-title">Backend Tech Demo</h1>
+            <div class="demo-stats">
+                <div class="stat-item">
+                    <span class="stat-label">Total Tokens</span>
+                    <span class="stat-value" id="totalTokens">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Active Tokens</span>
+                    <span class="stat-value" id="activeTokens">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Completed</span>
+                    <span class="stat-value" id="completedTokens">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Trades/sec</span>
+                    <span class="stat-value" id="tradesPerSec">0</span>
+                </div>
+                <div class="connection-status">
+                    <div class="status-dot" id="statusDot"></div>
+                    <span id="statusText">Connecting...</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="demo-canvas-container">
+            <canvas id="demoCanvas"></canvas>
+            <div class="token-info" id="tokenInfo"></div>
+        </div>
+
+        <div class="demo-sidebar">
+            <div class="sidebar-section">
+                <div class="sidebar-title">Legend</div>
+                <div class="legend">
+                    <div class="legend-item">
+                        <div class="legend-circle new"></div>
+                        <span>New Token</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-circle active"></div>
+                        <span>Active Trading</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-circle high-mc"></div>
+                        <span>High MC (>400 SOL)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-circle complete"></div>
+                        <span>Completed/Migrated</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <div class="sidebar-title">Recent Events</div>
+                <div class="event-log" id="eventLog"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class BackendDemo {
+            constructor() {
+                this.canvas = document.getElementById('demoCanvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.tokens = new Map();
+                this.socket = null;
+                this.solanaPriceUSD = 0;
+                this.stats = {
+                    totalTokens: 0,
+                    activeTokens: 0,
+                    completedTokens: 0,
+                    tradesCount: 0,
+                    tradesPerSec: 0
+                };
+                this.eventLog = [];
+                this.hoveredToken = null;
+                this.lastTradeTime = Date.now();
+                this.tradeCount = 0;
+                
+                this.setupCanvas();
+                this.initSocket();
+                this.startAnimation();
+                this.startStatsUpdate();
+            }
+
+            setupCanvas() {
+                const resize = () => {
+                    this.canvas.width = window.innerWidth;
+                    this.canvas.height = window.innerHeight - 80; // Account for header
+                };
+                resize();
+                window.addEventListener('resize', resize);
+            }
+
+            initSocket() {
+                this.socket = io();
+
+                this.socket.on('connect', () => {
+                    this.updateStatus(true);
+                    this.addEvent('Connection established', 'connection');
+                });
+
+                this.socket.on('disconnect', () => {
+                    this.updateStatus(false);
+                    this.addEvent('Connection lost', 'connection');
+                });
+
+                this.socket.on('solana:price', (data) => {
+                    this.solanaPriceUSD = data.price || 0;
+                });
+
+                this.socket.on('tokens:all', (tokens) => {
+                    this.tokens.clear();
+                    tokens.forEach(token => {
+                        this.addToken(token, false);
+                    });
+                    this.addEvent(`Loaded ${tokens.length} existing tokens`, 'connection');
+                });
+
+                this.socket.on('token:new', (tokenData) => {
+                    this.addToken(tokenData, true);
+                    this.addEvent(`New token: ${tokenData.name} (${tokenData.symbol})`, 'token-new');
+                });
+
+                this.socket.on('token:update', (tokenData) => {
+                    this.updateToken(tokenData);
+                    this.tradeCount++;
+                });
+
+                this.socket.on('token:complete', (tokenData) => {
+                    this.completeToken(tokenData);
+                    this.addEvent(`Token completed: ${tokenData.name}`, 'token-complete');
+                });
+
+                this.socket.on('token:remove', (data) => {
+                    this.removeToken(data.mint);
+                    this.addEvent(`Token removed: ${data.mint.substring(0, 8)}...`, 'token-remove');
+                });
+            }
+
+            addToken(tokenData, isNew = false) {
+                const token = {
+                    mint: tokenData.mint,
+                    name: tokenData.name || 'Unknown',
+                    symbol: tokenData.symbol || 'UNK',
+                    marketCapSol: tokenData.marketCapSol || tokenData.value || 0,
+                    allTimeHigh: tokenData.allTimeHigh || tokenData.marketCapSol || tokenData.value || 0,
+                    totalBuys: tokenData.totalBuys || 0,
+                    totalSells: tokenData.totalSells || 0,
+                    complete: tokenData.complete || false,
+                    migratedAt: tokenData.migratedAt || null,
+                    x: Math.random() * (this.canvas.width - 100) + 50,
+                    y: Math.random() * (this.canvas.height - 100) + 50,
+                    vx: (Math.random() - 0.5) * 0.5,
+                    vy: (Math.random() - 0.5) * 0.5,
+                    radius: this.calculateRadius(tokenData.marketCapSol || tokenData.value || 0),
+                    color: this.getTokenColor(tokenData),
+                    opacity: isNew ? 0 : 1,
+                    pulse: isNew,
+                    lastUpdate: Date.now()
+                };
+                
+                this.tokens.set(tokenData.mint, token);
+                this.updateStats();
+            }
+
+            updateToken(tokenData) {
+                const token = this.tokens.get(tokenData.mint);
+                if (!token) return;
+
+                const oldMarketCap = token.marketCapSol;
+                token.marketCapSol = tokenData.marketCapSol || tokenData.value || token.marketCapSol;
+                token.totalBuys = tokenData.totalBuys || token.totalBuys;
+                token.totalSells = tokenData.totalSells || token.totalSells;
+                
+                // Update ATH
+                if (tokenData.allTimeHigh && tokenData.allTimeHigh > token.allTimeHigh) {
+                    token.allTimeHigh = tokenData.allTimeHigh;
+                }
+                
+                // Update radius based on new marketcap
+                token.radius = this.calculateRadius(token.marketCapSol);
+                token.color = this.getTokenColor(tokenData);
+                token.lastUpdate = Date.now();
+                
+                // Pulse effect on significant marketcap change
+                if (Math.abs(token.marketCapSol - oldMarketCap) > 5) {
+                    token.pulse = true;
+                    setTimeout(() => { if (token) token.pulse = false; }, 500);
+                }
+            }
+
+            completeToken(tokenData) {
+                const token = this.tokens.get(tokenData.mint);
+                if (!token) return;
+
+                token.complete = true;
+                token.migratedAt = tokenData.migratedAt || Date.now();
+                token.color = '#fbbf24'; // Gold for completed
+                
+                // Start fade out animation
+                const fadeOut = () => {
+                    if (token.opacity > 0) {
+                        token.opacity -= 0.02;
+                        requestAnimationFrame(fadeOut);
+                    } else {
+                        // Token will be removed by server after 5 minutes
+                    }
+                };
+                setTimeout(fadeOut, 5000); // Start fade after 5 seconds
+            }
+
+            removeToken(mint) {
+                const token = this.tokens.get(mint);
+                if (token) {
+                    // Animate removal
+                    const fadeOut = () => {
+                        if (token.opacity > 0) {
+                            token.opacity -= 0.05;
+                            token.radius *= 0.95;
+                            requestAnimationFrame(fadeOut);
+                        } else {
+                            this.tokens.delete(mint);
+                            this.updateStats();
+                        }
+                    };
+                    fadeOut();
+                }
+            }
+
+            calculateRadius(marketCapSol) {
+                // Radius based on marketcap: 15px to 60px
+                const minRadius = 15;
+                const maxRadius = 60;
+                const minMC = 0;
+                const maxMC = 500;
+                const normalized = Math.min(1, Math.max(0, (marketCapSol - minMC) / (maxMC - minMC)));
+                return minRadius + (maxRadius - minRadius) * normalized;
+            }
+
+            getTokenColor(tokenData) {
+                if (tokenData.complete) return '#fbbf24'; // Gold for completed
+                const marketCapSol = tokenData.marketCapSol || tokenData.value || 0;
+                if (marketCapSol >= 400) return '#a78bfa'; // Purple for high marketcap
+                if (marketCapSol >= 100) return '#4ade80'; // Green for active
+                return '#60a5fa'; // Blue for new
+            }
+
+            updateStatus(connected) {
+                const dot = document.getElementById('statusDot');
+                const text = document.getElementById('statusText');
+                if (connected) {
+                    dot.classList.add('connected');
+                    text.textContent = 'Connected';
+                } else {
+                    dot.classList.remove('connected');
+                    text.textContent = 'Disconnected';
+                }
+            }
+
+            addEvent(message, type = 'info') {
+                const time = new Date().toLocaleTimeString();
+                const event = { message, type, time };
+                this.eventLog.unshift(event);
+                if (this.eventLog.length > 50) {
+                    this.eventLog.pop();
+                }
+                this.renderEventLog();
+            }
+
+            renderEventLog() {
+                const logContainer = document.getElementById('eventLog');
+                logContainer.innerHTML = this.eventLog.slice(0, 20).map(event => `
+                    <div class="event-item ${event.type}">
+                        <div>${event.message}</div>
+                        <div class="event-time">${event.time}</div>
+                    </div>
+                `).join('');
+            }
+
+            updateStats() {
+                const total = this.tokens.size;
+                const active = Array.from(this.tokens.values()).filter(t => !t.complete).length;
+                const completed = Array.from(this.tokens.values()).filter(t => t.complete).length;
+
+                document.getElementById('totalTokens').textContent = total;
+                document.getElementById('activeTokens').textContent = active;
+                document.getElementById('completedTokens').textContent = completed;
+            }
+
+            startStatsUpdate() {
+                setInterval(() => {
+                    const now = Date.now();
+                    const elapsed = (now - this.lastTradeTime) / 1000;
+                    if (elapsed >= 1) {
+                        this.stats.tradesPerSec = (this.tradeCount / elapsed).toFixed(1);
+                        document.getElementById('tradesPerSec').textContent = this.stats.tradesPerSec;
+                        this.tradeCount = 0;
+                        this.lastTradeTime = now;
+                    }
+                }, 1000);
+            }
+
+            startAnimation() {
+                const animate = () => {
+                    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                    
+                    // Update and draw tokens
+                    for (const [mint, token] of this.tokens.entries()) {
+                        // Update position (gentle floating)
+                        token.x += token.vx;
+                        token.y += token.vy;
+                        
+                        // Bounce off walls
+                        if (token.x - token.radius < 0 || token.x + token.radius > this.canvas.width) {
+                            token.vx *= -1;
+                        }
+                        if (token.y - token.radius < 0 || token.y + token.radius > this.canvas.height) {
+                            token.vy *= -1;
+                        }
+                        
+                        // Keep in bounds
+                        token.x = Math.max(token.radius, Math.min(this.canvas.width - token.radius, token.x));
+                        token.y = Math.max(token.radius, Math.min(this.canvas.height - token.radius, token.y));
+                        
+                        // Fade in new tokens
+                        if (token.opacity < 1) {
+                            token.opacity = Math.min(1, token.opacity + 0.05);
+                        }
+                        
+                        // Draw token circle
+                        this.ctx.save();
+                        this.ctx.globalAlpha = token.opacity;
+                        
+                        // Pulse effect
+                        let radius = token.radius;
+                        if (token.pulse) {
+                            radius = token.radius * (1 + Math.sin(Date.now() / 100) * 0.2);
+                        }
+                        
+                        // Draw glow for high marketcap tokens
+                        if (token.marketCapSol >= 400) {
+                            const gradient = this.ctx.createRadialGradient(
+                                token.x, token.y, 0,
+                                token.x, token.y, radius * 2
+                            );
+                            gradient.addColorStop(0, token.color);
+                            gradient.addColorStop(1, 'transparent');
+                            this.ctx.fillStyle = gradient;
+                            this.ctx.beginPath();
+                            this.ctx.arc(token.x, token.y, radius * 2, 0, Math.PI * 2);
+                            this.ctx.fill();
+                        }
+                        
+                        // Draw circle
+                        this.ctx.fillStyle = token.color;
+                        this.ctx.beginPath();
+                        this.ctx.arc(token.x, token.y, radius, 0, Math.PI * 2);
+                        this.ctx.fill();
+                        
+                        // Draw border
+                        this.ctx.strokeStyle = token.complete ? '#fbbf24' : 'rgba(255, 255, 255, 0.3)';
+                        this.ctx.lineWidth = 2;
+                        this.ctx.stroke();
+                        
+                        // Draw symbol text
+                        if (radius > 20) {
+                            this.ctx.fillStyle = '#fff';
+                            this.ctx.font = `${Math.max(10, radius * 0.4)}px Arial`;
+                            this.ctx.textAlign = 'center';
+                            this.ctx.textBaseline = 'middle';
+                            this.ctx.fillText(token.symbol.substring(0, 4), token.x, token.y);
+                        }
+                        
+                        // Draw ATH indicator if above current
+                        if (token.allTimeHigh > token.marketCapSol) {
+                            const athAngle = Math.PI * 2 * (token.marketCapSol / token.allTimeHigh);
+                            this.ctx.strokeStyle = '#fbbf24';
+                            this.ctx.lineWidth = 3;
+                            this.ctx.beginPath();
+                            this.ctx.arc(token.x, token.y, radius + 5, 0, athAngle);
+                            this.ctx.stroke();
+                        }
+                        
+                        this.ctx.restore();
+                    }
+                    
+                    requestAnimationFrame(animate);
+                };
+                animate();
+            }
+
+            handleMouseMove(event) {
+                const rect = this.canvas.getBoundingClientRect();
+                const x = event.clientX - rect.left;
+                const y = event.clientY - rect.top;
+                
+                let found = null;
+                for (const [mint, token] of this.tokens.entries()) {
+                    const dx = x - token.x;
+                    const dy = y - token.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    if (distance <= token.radius) {
+                        found = token;
+                        break;
+                    }
+                }
+                
+                this.hoveredToken = found;
+                this.updateTokenInfo(x, y);
+            }
+
+            updateTokenInfo(x, y) {
+                const info = document.getElementById('tokenInfo');
+                if (this.hoveredToken) {
+                    const token = this.hoveredToken;
+                    const marketCapUSD = token.marketCapSol * this.solanaPriceUSD;
+                    info.innerHTML = `
+                        <div class="token-info-name">${token.name} (${token.symbol})</div>
+                        <div class="token-info-detail">Marketcap: <span class="token-info-value">${token.marketCapSol.toFixed(2)} SOL</span></div>
+                        <div class="token-info-detail">Marketcap USD: <span class="token-info-value">$${marketCapUSD.toLocaleString(undefined, {maximumFractionDigits: 0})}</span></div>
+                        <div class="token-info-detail">ATH: <span class="token-info-value">${token.allTimeHigh.toFixed(2)} SOL</span></div>
+                        <div class="token-info-detail">Buys: <span class="token-info-value">${token.totalBuys}</span> | Sells: <span class="token-info-value">${token.totalSells}</span></div>
+                        ${token.complete ? '<div class="token-info-detail" style="color: #fbbf24;">✓ Completed</div>' : ''}
+                    `;
+                    info.style.left = `${x + 10}px`;
+                    info.style.top = `${y + 10}px`;
+                    info.classList.add('show');
+                } else {
+                    info.classList.remove('show');
+                }
+            }
+        }
+
+        // Initialize demo when page loads
+        let demo;
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+                demo = new BackendDemo();
+                demo.canvas.addEventListener('mousemove', (e) => demo.handleMouseMove(e));
+            });
+        } else {
+            demo = new BackendDemo();
+            demo.canvas.addEventListener('mousemove', (e) => demo.handleMouseMove(e));
+        }
+    </script>
+</body>
+</html>
+

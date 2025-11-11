@@ -6,6 +6,8 @@ import { Server } from 'socket.io';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import puppeteer from 'puppeteer';
+import fs from 'fs';
+import crypto from 'crypto';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -51,6 +53,11 @@ let currentMetas = [];
 let launchToken = null;
 const LAUNCH_DEVELOPER_WALLET = 'AvHaC68btjF1d4mSDggW3ChbY4dkF3wrE9XKe5N2kzmx';
 
+// Telegram Bot Configuration
+const TELEGRAM_BOT_NAME = 'PFKit_bot';
+const TELEGRAM_BOT_API_KEY = process.env.TELEGRAM_BOT_API_KEY || '8586873785:AAF55unRbhX99xCOfooTFs0Z6Pycu-FOY-A';
+const TELEGRAM_API_URL = `https://api.telegram.org/bot${TELEGRAM_BOT_API_KEY}`;
+
 // Express and Socket.io setup
 const app = express();
 const server = createServer(app);
@@ -76,6 +83,9 @@ app.use((req, res, next) => {
 });
 
 // API routes must be defined BEFORE static files to ensure they're matched first
+// Parse JSON bodies
+app.use(express.json());
+
 // API endpoint to get localToken
 app.get('/api/localToken', (req, res) => {
     // If launchToken is set, return it instead of localToken
@@ -84,6 +94,350 @@ app.get('/api/localToken', (req, res) => {
     } else {
         const localToken = process.env.localToken || 'no data';
         res.json({ localToken });
+    }
+});
+
+// Helper function to read clients.json
+function readClients() {
+    const clientsPath = join(__dirname, 'clients.json');
+    try {
+        if (fs.existsSync(clientsPath)) {
+            const data = fs.readFileSync(clientsPath, 'utf8');
+            return JSON.parse(data);
+        }
+    } catch (error) {
+        console.error('Error reading clients.json:', error.message);
+    }
+    return {};
+}
+
+// Helper function to write clients.json
+function writeClients(clients) {
+    const clientsPath = join(__dirname, 'clients.json');
+    try {
+        fs.writeFileSync(clientsPath, JSON.stringify(clients, null, 2), 'utf8');
+        return true;
+    } catch (error) {
+        console.error('Error writing clients.json:', error.message);
+        return false;
+    }
+}
+
+// Helper function to hash password
+function hashPassword(password) {
+    return crypto.createHash('sha256').update(password).digest('hex');
+}
+
+// API endpoint to check username availability
+app.post('/api/users/check-username', (req, res) => {
+    const { username } = req.body;
+    
+    if (!username || typeof username !== 'string') {
+        return res.status(400).json({ error: 'Username is required' });
+    }
+    
+    // Validate username: up to 16 characters, alphanumeric only
+    if (username.length > 16 || !/^[a-zA-Z0-9]+$/.test(username)) {
+        return res.status(400).json({ 
+            error: 'Username must be up to 16 characters and contain only letters and numbers' 
+        });
+    }
+    
+    const clients = readClients();
+    const isAvailable = !clients[username.toLowerCase()];
+    
+    res.json({ available: isAvailable });
+});
+
+// API endpoint to create user profile
+app.post('/api/users/create', (req, res) => {
+    const { username, password } = req.body;
+    
+    if (!username || typeof username !== 'string') {
+        return res.status(400).json({ error: 'Username is required' });
+    }
+    
+    if (!password || typeof password !== 'string' || password.length < 4) {
+        return res.status(400).json({ error: 'Password must be at least 4 characters' });
+    }
+    
+    // Validate username: up to 16 characters, alphanumeric only
+    if (username.length > 16 || !/^[a-zA-Z0-9]+$/.test(username)) {
+        return res.status(400).json({ 
+            error: 'Username must be up to 16 characters and contain only letters and numbers' 
+        });
+    }
+    
+    const clients = readClients();
+    const usernameLower = username.toLowerCase();
+    
+    if (clients[usernameLower]) {
+        return res.status(409).json({ error: 'Username already taken' });
+    }
+    
+    // Create new user profile
+    clients[usernameLower] = {
+        username: username,
+        passwordHash: hashPassword(password),
+        alerts: [],
+        telegramLinked: false,
+        telegramChatId: null,
+        createdAt: Date.now()
+    };
+    
+    if (writeClients(clients)) {
+        res.json({ success: true, message: 'Profile created successfully' });
+    } else {
+        res.status(500).json({ error: 'Failed to create profile' });
+    }
+});
+
+// API endpoint to authenticate user
+app.post('/api/users/login', (req, res) => {
+    const { username, password } = req.body;
+    
+    if (!username || !password) {
+        return res.status(400).json({ error: 'Username and password are required' });
+    }
+    
+    const clients = readClients();
+    const usernameLower = username.toLowerCase();
+    const user = clients[usernameLower];
+    
+    if (!user) {
+        return res.status(401).json({ error: 'Invalid username or password' });
+    }
+    
+    const passwordHash = hashPassword(password);
+    if (user.passwordHash !== passwordHash) {
+        return res.status(401).json({ error: 'Invalid username or password' });
+    }
+    
+    res.json({ 
+        success: true, 
+        username: user.username,
+        telegramLinked: user.telegramLinked || false
+    });
+});
+
+// API endpoint to save alerts to user profile
+app.post('/api/users/save-alerts', (req, res) => {
+    const { username, password, alerts } = req.body;
+    
+    if (!username || !password) {
+        return res.status(400).json({ error: 'Username and password are required' });
+    }
+    
+    if (!Array.isArray(alerts)) {
+        return res.status(400).json({ error: 'Alerts must be an array' });
+    }
+    
+    const clients = readClients();
+    const usernameLower = username.toLowerCase();
+    const user = clients[usernameLower];
+    
+    if (!user) {
+        return res.status(401).json({ error: 'User not found' });
+    }
+    
+    const passwordHash = hashPassword(password);
+    if (user.passwordHash !== passwordHash) {
+        return res.status(401).json({ error: 'Invalid password' });
+    }
+    
+    // Save alerts to user profile
+    user.alerts = alerts;
+    user.updatedAt = Date.now();
+    
+    if (writeClients(clients)) {
+        res.json({ success: true, message: 'Alerts saved successfully' });
+    } else {
+        res.status(500).json({ error: 'Failed to save alerts' });
+    }
+});
+
+// API endpoint to get user alerts
+app.post('/api/users/get-alerts', (req, res) => {
+    const { username, password } = req.body;
+    
+    if (!username || !password) {
+        return res.status(400).json({ error: 'Username and password are required' });
+    }
+    
+    const clients = readClients();
+    const usernameLower = username.toLowerCase();
+    const user = clients[usernameLower];
+    
+    if (!user) {
+        return res.status(401).json({ error: 'User not found' });
+    }
+    
+    const passwordHash = hashPassword(password);
+    if (user.passwordHash !== passwordHash) {
+        return res.status(401).json({ error: 'Invalid password' });
+    }
+    
+    res.json({ 
+        success: true, 
+        alerts: user.alerts || [],
+        telegramLinked: user.telegramLinked || false
+    });
+});
+
+// API endpoint to receive Telegram webhook
+app.post('/api/telegram/webhook', (req, res) => {
+    try {
+        const message = req.body.message;
+        
+        if (!message || !message.text) {
+            return res.json({ ok: true });
+        }
+        
+        const text = message.text.trim();
+        const chatId = message.chat.id;
+        const username = message.from.username || null;
+        
+        // Handle /start command with username parameter
+        // Format: /start username_here
+        if (text.startsWith('/start')) {
+            const parts = text.split(' ');
+            const linkedUsername = parts.length > 1 ? parts[1].toLowerCase() : null;
+            
+            if (linkedUsername) {
+                const clients = readClients();
+                const user = clients[linkedUsername];
+                
+                if (user) {
+                    // Link Telegram to user profile
+                    user.telegramLinked = true;
+                    user.telegramChatId = chatId;
+                    user.updatedAt = Date.now();
+                    
+                    if (writeClients(clients)) {
+                        // Send confirmation message to user
+                        axios.post(`${TELEGRAM_API_URL}/sendMessage`, {
+                            chat_id: chatId,
+                            text: `✅ Successfully linked to profile "${user.username}"!\n\nYou will now receive alerts via Telegram when your saved alerts match new tokens.`
+                        }).catch(err => {
+                            console.error('Error sending Telegram message:', err.message);
+                        });
+                        
+                        console.log(`[Telegram] Linked chat ${chatId} to user ${linkedUsername}`);
+                    }
+                } else {
+                    // User not found
+                    axios.post(`${TELEGRAM_API_URL}/sendMessage`, {
+                        chat_id: chatId,
+                        text: '❌ User profile not found. Please make sure you clicked the link from your profile page.'
+                    }).catch(err => {
+                        console.error('Error sending Telegram message:', err.message);
+                    });
+                }
+            } else {
+                // No username provided
+                axios.post(`${TELEGRAM_API_URL}/sendMessage`, {
+                    chat_id: chatId,
+                    text: '👋 Welcome to PumpFun ToolKit!\n\nTo link your account, please use the "Link to Telegram" button in your profile settings.'
+                }).catch(err => {
+                    console.error('Error sending Telegram message:', err.message);
+                });
+            }
+        }
+        
+        res.json({ ok: true });
+    } catch (error) {
+        console.error('Error processing Telegram webhook:', error);
+        res.json({ ok: true }); // Always return ok to prevent Telegram retries
+    }
+});
+
+// API endpoint to check Telegram link status
+app.post('/api/users/check-telegram', (req, res) => {
+    const { username, password } = req.body;
+    
+    if (!username || !password) {
+        return res.status(400).json({ error: 'Username and password are required' });
+    }
+    
+    const clients = readClients();
+    const usernameLower = username.toLowerCase();
+    const user = clients[usernameLower];
+    
+    if (!user) {
+        return res.status(401).json({ error: 'User not found' });
+    }
+    
+    const passwordHash = hashPassword(password);
+    if (user.passwordHash !== passwordHash) {
+        return res.status(401).json({ error: 'Invalid password' });
+    }
+    
+    res.json({ 
+        success: true, 
+        telegramLinked: user.telegramLinked || false,
+        telegramChatId: user.telegramChatId || null
+    });
+});
+
+// API endpoint to set Telegram webhook (admin/helper endpoint)
+app.post('/api/telegram/set-webhook', async (req, res) => {
+    try {
+        const { webhookUrl } = req.body;
+        
+        if (!webhookUrl) {
+            return res.status(400).json({ error: 'webhookUrl is required' });
+        }
+        
+        if (!TELEGRAM_BOT_API_KEY) {
+            return res.status(500).json({ error: 'Telegram bot API key not configured' });
+        }
+        
+        // Set webhook via Telegram API
+        const response = await axios.post(`${TELEGRAM_API_URL}/setWebhook`, {
+            url: webhookUrl
+        });
+        
+        if (response.data.ok) {
+            res.json({ 
+                success: true, 
+                message: 'Webhook set successfully',
+                webhookUrl: webhookUrl,
+                result: response.data.result
+            });
+        } else {
+            res.status(400).json({ 
+                error: 'Failed to set webhook',
+                description: response.data.description
+            });
+        }
+    } catch (error) {
+        console.error('Error setting webhook:', error);
+        res.status(500).json({ 
+            error: 'Error setting webhook',
+            message: error.message
+        });
+    }
+});
+
+// API endpoint to get current webhook info
+app.get('/api/telegram/webhook-info', async (req, res) => {
+    try {
+        if (!TELEGRAM_BOT_API_KEY) {
+            return res.status(500).json({ error: 'Telegram bot API key not configured' });
+        }
+        
+        const response = await axios.get(`${TELEGRAM_API_URL}/getWebhookInfo`);
+        
+        res.json({ 
+            success: true,
+            webhookInfo: response.data.result
+        });
+    } catch (error) {
+        console.error('Error getting webhook info:', error);
+        res.status(500).json({ 
+            error: 'Error getting webhook info',
+            message: error.message
+        });
     }
 });
 
@@ -599,7 +953,18 @@ function removeOldestTokens() {
     
     // Remove the lowest marketcap token that is old enough
     const tokenToRemove = oldEnoughTokens[0];
+    const token = tokens.get(tokenToRemove.mint);
     console.log(`Removing lowest marketcap token (${tokenToRemove.marketCap} SOL) that is at least 2 minutes old: ${tokenToRemove.mint}`);
+    
+    // Emit cleanup operation
+    io.emit('backend:operation', {
+        type: 'cleanup',
+        message: `Removing old token: ${token?.name || 'Unknown'} (${tokenToRemove.marketCap.toFixed(2)} SOL)`,
+        mint: tokenToRemove.mint.substring(0, 8),
+        reason: 'token-limit',
+        timestamp: Date.now()
+    });
+    
     removeToken(tokenToRemove.mint);
     
     // If still over limit, call recursively to remove more
@@ -1349,6 +1714,15 @@ ws.send(JSON.stringify(payload));
         // Always broadcast new token to all connected clients
         broadcastNewToken(tokenData);
         
+        // Emit backend operation for demo
+        io.emit('backend:operation', {
+            type: 'token-created',
+            message: `Token created: ${response.name} (${response.symbol})`,
+            mint: response.mint.substring(0, 8),
+            marketcap: response.marketCapSol,
+            timestamp: Date.now()
+        });
+        
         // Client-side alert checking (server-side checking kept for future Telegram bot)
         // checkAlertsForToken(tokenData).catch(error => {
         //     console.error(`Error checking alerts for token ${response.mint}:`, error.message);
@@ -1640,6 +2014,19 @@ ws.send(JSON.stringify(payload));
         // Save updated token
         tokens.set(response.mint, token);
         
+        // Emit trade event for demo
+        io.emit('trade:event', {
+            type: isBuy ? 'buy' : 'sell',
+            mint: response.mint,
+            tokenName: token.name,
+            tokenSymbol: token.symbol,
+            solAmount: solAmount,
+            marketCapSol: response.marketCapSol || token.marketCapSol,
+            totalBuys: token.totalBuys,
+            totalSells: token.totalSells,
+            timestamp: Date.now()
+        });
+        
         // Broadcast update to clients
         broadcastTokenUpdate(token);
     }
@@ -1688,16 +2075,24 @@ ws.send(JSON.stringify(payload));
 // Function to handle token migration via API check (fallback for missed migration events)
 async function handleTokenMigrationCheck(mint, token) {
     try {
+        // Emit operation start
+        io.emit('backend:operation', {
+            type: 'api-request',
+            message: `Checking migration status: ${token.name}`,
+            mint: mint.substring(0, 8),
+            timestamp: Date.now()
+        });
+        
         const apiTokenData = await getToken(mint);
         if (!apiTokenData) {
-            return; // Token not found, skip
+            return false; // Token not found, skip
         }
         
         // Check if token is complete
         if (apiTokenData.complete === true) {
             // Token has migrated - handle it
             if (token.complete) {
-                return; // Already marked as complete, skip
+                return false; // Already marked as complete, skip
             }
             
             console.log(`[Migration Check] Token ${token.name} (${token.symbol}) - ${mint} is complete (missed migration event)`);
@@ -1722,9 +2117,23 @@ async function handleTokenMigrationCheck(mint, token) {
             // Also send as regular update so clients see the change
             broadcastTokenUpdate(token);
             
+            // Emit operation result
+            io.emit('backend:operation', {
+                type: 'migration-found',
+                message: `Token migrated: ${token.name}`,
+                mint: mint.substring(0, 8),
+                timestamp: Date.now()
+            });
+            
             // Set timeout to remove token after 5 minutes (300000 ms)
             const timeoutId = setTimeout(() => {
                 console.log(`Removing migrated token after 5 minutes: ${token.name} (${token.symbol}) - ${mint}`);
+                io.emit('backend:operation', {
+                    type: 'cleanup',
+                    message: `Removing completed token: ${token.name}`,
+                    mint: mint.substring(0, 8),
+                    timestamp: Date.now()
+                });
                 removeToken(mint);
                 migrationTimeouts.delete(mint);
             }, 5 * 60 * 1000); // 5 minutes
@@ -1734,6 +2143,8 @@ async function handleTokenMigrationCheck(mint, token) {
             
             // Clear last transaction time since token is complete
             lastTransactionTime.delete(mint);
+            
+            return true;
         } else {
             // Token is not complete, update marketcap if it has changed
             const newMarketCapSol = apiTokenData.usd_market_cap_sol || 0;
@@ -1757,10 +2168,27 @@ async function handleTokenMigrationCheck(mint, token) {
                 
                 // Broadcast update to clients
                 broadcastTokenUpdate(token);
+                
+                // Emit operation result
+                io.emit('backend:operation', {
+                    type: 'marketcap-update',
+                    message: `Updated marketcap: ${token.name} → ${newMarketCapSol.toFixed(2)} SOL`,
+                    mint: mint.substring(0, 8),
+                    timestamp: Date.now()
+                });
             }
+            
+            return false;
         }
     } catch (error) {
         console.error(`[Migration Check] Error checking token ${mint}:`, error.message);
+        io.emit('backend:operation', {
+            type: 'error',
+            message: `API check failed: ${token.name}`,
+            error: error.message,
+            timestamp: Date.now()
+        });
+        return false;
     }
 }
 
@@ -1771,6 +2199,9 @@ function checkHighMarketcapTokens() {
     const now = Date.now();
     const thirtySecondsAgo = now - (30 * 1000); // 30 seconds in milliseconds
     const MIN_MARKETCAP_SOL = 400;
+    
+    let checkedCount = 0;
+    let completedCount = 0;
     
     // Check all stored tokens
     for (const [mint, token] of tokens.entries()) {
@@ -1784,11 +2215,24 @@ function checkHighMarketcapTokens() {
         // Check if token has had no transactions for 30 seconds
         const lastTxTime = lastTransactionTime.get(mint);
         if (!lastTxTime || lastTxTime < thirtySecondsAgo) {
+            checkedCount++;
             // Token qualifies for migration check
-            handleTokenMigrationCheck(mint, token).catch(error => {
+            handleTokenMigrationCheck(mint, token).then(wasCompleted => {
+                if (wasCompleted) completedCount++;
+            }).catch(error => {
                 console.error(`[Migration Check] Failed to check token ${mint}:`, error.message);
             });
         }
+    }
+    
+    // Emit backend operation event for demo
+    if (checkedCount > 0) {
+        io.emit('backend:operation', {
+            type: 'migration-check',
+            message: `Checked ${checkedCount} high marketcap tokens for migration`,
+            checkedCount,
+            timestamp: Date.now()
+        });
     }
 }
 
