@@ -26,6 +26,9 @@ const tokenCache = new Map();
 // Map to store migration timeouts (mint -> timeoutId)
 const migrationTimeouts = new Map();
 
+// Map to store last transaction time for each token (mint -> timestamp)
+const lastTransactionTime = new Map();
+
 // Alert storage
 const alerts = new Map();
 let alertIdCounter = 1;
@@ -505,6 +508,9 @@ function removeToken(mint) {
         clearTimeout(migrationTimeouts.get(mint));
         migrationTimeouts.delete(mint);
     }
+    
+    // Clear last transaction time
+    lastTransactionTime.delete(mint);
     
     const token = tokens.get(mint);
     if (token) {
@@ -1300,6 +1306,9 @@ ws.send(JSON.stringify(payload));
             tokens.set(response.mint, tokenData);
             console.log(`Token [PARTIAL]: ${response.name} (${response.symbol}) - ${response.mint}`);
             
+            // Initialize last transaction time for new token
+            lastTransactionTime.set(response.mint, Date.now());
+            
             // Remove oldest tokens if we've exceeded the limit
             removeOldestTokens();
         } else {
@@ -1625,6 +1634,9 @@ ws.send(JSON.stringify(payload));
         // Update per-minute trade data
         updateTradesPerMinute(token, isBuy, solAmount);
         
+        // Update last transaction time
+        lastTransactionTime.set(response.mint, Date.now());
+        
         // Save updated token
         tokens.set(response.mint, token);
         
@@ -1673,6 +1685,128 @@ ws.send(JSON.stringify(payload));
     });
 }
 
+// Function to handle token migration via API check (fallback for missed migration events)
+async function handleTokenMigrationCheck(mint, token) {
+    try {
+        const apiTokenData = await getToken(mint);
+        if (!apiTokenData) {
+            return; // Token not found, skip
+        }
+        
+        // Check if token is complete
+        if (apiTokenData.complete === true) {
+            // Token has migrated - handle it
+            if (token.complete) {
+                return; // Already marked as complete, skip
+            }
+            
+            console.log(`[Migration Check] Token ${token.name} (${token.symbol}) - ${mint} is complete (missed migration event)`);
+            
+            // Mark token as complete
+            token.complete = true;
+            token.migratedAt = Date.now();
+            
+            // Update both storage and cache
+            if (STORE_TOKENS) {
+                tokens.set(mint, token);
+            } else {
+                tokenCache.set(mint, token);
+            }
+            
+            // Broadcast completion update to clients
+            const tokenData = prepareTokenForBroadcast(token);
+            tokenData.complete = true;
+            tokenData.migratedAt = token.migratedAt;
+            io.emit('token:complete', tokenData);
+            
+            // Also send as regular update so clients see the change
+            broadcastTokenUpdate(token);
+            
+            // Set timeout to remove token after 5 minutes (300000 ms)
+            const timeoutId = setTimeout(() => {
+                console.log(`Removing migrated token after 5 minutes: ${token.name} (${token.symbol}) - ${mint}`);
+                removeToken(mint);
+                migrationTimeouts.delete(mint);
+            }, 5 * 60 * 1000); // 5 minutes
+            
+            // Store timeout ID so we can clear it if needed
+            migrationTimeouts.set(mint, timeoutId);
+            
+            // Clear last transaction time since token is complete
+            lastTransactionTime.delete(mint);
+        } else {
+            // Token is not complete, update marketcap if it has changed
+            const newMarketCapSol = apiTokenData.usd_market_cap_sol || 0;
+            if (newMarketCapSol !== token.marketCapSol && newMarketCapSol > 0) {
+                console.log(`[Migration Check] Updating marketcap for ${token.name} (${token.symbol}): ${token.marketCapSol} -> ${newMarketCapSol} SOL`);
+                
+                token.marketCapSol = newMarketCapSol;
+                token.value = newMarketCapSol;
+                
+                // Update All Time High if current marketcap exceeds it
+                if (!token.allTimeHigh || newMarketCapSol > token.allTimeHigh) {
+                    token.allTimeHigh = newMarketCapSol;
+                }
+                
+                // Update both storage and cache
+                if (STORE_TOKENS) {
+                    tokens.set(mint, token);
+                } else {
+                    tokenCache.set(mint, token);
+                }
+                
+                // Broadcast update to clients
+                broadcastTokenUpdate(token);
+            }
+        }
+    } catch (error) {
+        console.error(`[Migration Check] Error checking token ${mint}:`, error.message);
+    }
+}
+
+// Function to check for tokens that need migration verification
+function checkHighMarketcapTokens() {
+    if (!STORE_TOKENS) return;
+    
+    const now = Date.now();
+    const thirtySecondsAgo = now - (30 * 1000); // 30 seconds in milliseconds
+    const MIN_MARKETCAP_SOL = 400;
+    
+    // Check all stored tokens
+    for (const [mint, token] of tokens.entries()) {
+        // Skip if already complete
+        if (token.complete) continue;
+        
+        // Skip if marketcap is below 400 SOL
+        const marketCapSol = token.marketCapSol || token.value || 0;
+        if (marketCapSol < MIN_MARKETCAP_SOL) continue;
+        
+        // Check if token has had no transactions for 30 seconds
+        const lastTxTime = lastTransactionTime.get(mint);
+        if (!lastTxTime || lastTxTime < thirtySecondsAgo) {
+            // Token qualifies for migration check
+            handleTokenMigrationCheck(mint, token).catch(error => {
+                console.error(`[Migration Check] Failed to check token ${mint}:`, error.message);
+            });
+        }
+    }
+}
+
+// Start interval to check high marketcap tokens every 10 seconds
+let migrationCheckInterval = null;
+function startMigrationCheckInterval() {
+    // Clear existing interval if any
+    if (migrationCheckInterval) {
+        clearInterval(migrationCheckInterval);
+        migrationCheckInterval = null;
+    }
+    
+    // Check every 10 seconds
+    migrationCheckInterval = setInterval(() => {
+        checkHighMarketcapTokens();
+    }, 10 * 1000); // 10 seconds
+}
+
 // Function to start heartbeat check
 function startHeartbeat() {
     // Clear existing interval if any
@@ -1706,6 +1840,9 @@ function startHeartbeat() {
 // Initialize WebSocket connection
 ws = new WebSocket(WS_URL);
 setupWebSocketHandlers();
+
+// Start migration check interval
+startMigrationCheckInterval();
 
 /*
 
