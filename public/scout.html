@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PumpFun ToolKit - Scout</title>
-    <script src="/socket.io/socket.io.js"></script>
+    <!-- CDN client: /socket.io/socket.io.js only exists when the Node server runs; static hosts (e.g. Vercel) need the bundled client -->
+    <script src="https://cdn.socket.io/4.8.1/socket.io.min.js" crossorigin="anonymous"></script>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body data-theme="pump">
