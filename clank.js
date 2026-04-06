@@ -77,7 +77,14 @@ const TELEGRAM_API_URL = `https://api.telegram.org/bot${TELEGRAM_BOT_API_KEY}`;
 // Express and Socket.io setup
 const app = express();
 const server = createServer(app);
-const io = new Server(server);
+const socketCorsEnv = process.env.SOCKET_IO_CORS_ORIGIN;
+const socketCorsOrigin =
+    socketCorsEnv === undefined || socketCorsEnv === ''
+        ? true
+        : socketCorsEnv.split(',').map((s) => s.trim());
+const io = new Server(server, {
+    cors: { origin: socketCorsOrigin, methods: ['GET', 'POST'] },
+});
 
 
 // Force HTTPS redirect middleware
@@ -1228,8 +1235,9 @@ async function updateSolanaPrice() {
     }
 }
 
-// Start the server
-const PORT = process.env.PORT || 3000;
+// Start the server (Fly.io / Docker: bind 0.0.0.0 so the proxy can reach the app)
+const PORT = Number(process.env.PORT) || 3000;
+const HOST = process.env.HOST || '0.0.0.0';
 /**
  * Test function to scrape community creator from a URL using headless browser
  * @param {string} url - The URL to scrape (e.g., X.com community page, pump.fun token page)
@@ -1409,8 +1417,8 @@ async function comScrape(url) {
     }
 }
 
-server.listen(PORT, async () => {
-    console.log(`🚀 Server running on http://localhost:${PORT}`);
+server.listen(PORT, HOST, async () => {
+    console.log(`🚀 Server listening on http://${HOST}:${PORT}`);
     console.log(`🚀 Starting initialization...`);
     
     try {
@@ -1550,6 +1558,11 @@ async function getDexScreenerHeader(mintAddress) {
     }
 }
 
+/** Dex CTO / Boost / Ads polling interval */
+const TOKEN_EVENTS_POLL_MS = 5000;
+/** Live stream leaderboard changes slowly; avoid hammering pump.fun API */
+const LIVE_STREAM_POLL_MS = 30000;
+
 /**
  * Poll DexScreener APIs for token events (CTO, Boost, Ads)
  */
@@ -1570,24 +1583,31 @@ async function startTokenEventsPolling() {
         console.log('🚀 [Token Events] Checking Live Stream events at startup...');
         await checkLiveStreamEventsAtStartup();
         
-        // Poll immediately, then every 5 seconds
-        console.log('🚀 [Token Events] Starting initial poll...');
+        // Poll Dex events immediately, then every TOKEN_EVENTS_POLL_MS (live stream uses its own slower interval)
+        console.log('🚀 [Token Events] Starting initial poll (CTO / Boost / Ads)...');
         await checkCTOEvents();
         await checkBoostEvents();
         await checkAdsEvents();
-        await checkLiveStreamEvents();
         
-        console.log('🚀 [Token Events] Setting up polling interval (5 seconds)...');
+        console.log(`🚀 [Token Events] Setting up Dex polling interval (${TOKEN_EVENTS_POLL_MS / 1000}s)...`);
         setInterval(async () => {
             try {
                 await checkCTOEvents();
                 await checkBoostEvents();
                 await checkAdsEvents();
-                await checkLiveStreamEvents();
             } catch (error) {
                 console.error('🚀 [Token Events] Error in polling interval:', error);
             }
-        }, 5000); // 5 seconds
+        }, TOKEN_EVENTS_POLL_MS);
+        
+        console.log(`🚀 [Live Stream] Setting up polling interval (${LIVE_STREAM_POLL_MS / 1000}s)...`);
+        setInterval(async () => {
+            try {
+                await checkLiveStreamEvents();
+            } catch (error) {
+                console.error('🚀 [Live Stream] Error in polling interval:', error);
+            }
+        }, LIVE_STREAM_POLL_MS);
         
         console.log('🚀 [Token Events] Polling setup complete!');
     } catch (error) {
