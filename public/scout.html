@@ -1,334 +1,523 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PumpFun ToolKit - Scout</title>
-    <!-- CDN client: /socket.io/socket.io.js only exists when the Node server runs; static hosts (e.g. Vercel) need the bundled client -->
-    <script src="https://cdn.socket.io/4.8.1/socket.io.min.js" crossorigin="anonymous"></script>
-    <link rel="stylesheet" href="styles.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="socket-backend-url" content="">
+  <title>Volume Monitor · PumpFun ToolKit</title>
+  <script src="https://cdn.socket.io/4.8.1/socket.io.min.js" crossorigin="anonymous"></script>
+  <style>
+    html, body { min-height: 100%; margin: 0; }
+    body {
+      position: relative;
+      color: #e0e0e0;
+      font-family: Arial, sans-serif;
+      overflow-x: hidden;
+      overflow-y: auto;
+    }
+    #backgroundCanvas {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+    }
+    .stars-container {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      pointer-events: none;
+      overflow: hidden;
+    }
+    .star {
+      position: absolute;
+      background: white;
+      border-radius: 50%;
+      animation: twinkle 3s ease-in-out infinite;
+    }
+    .star.small { width: 2px; height: 2px; }
+    .star.medium { width: 3px; height: 3px; }
+    .star.large { width: 4px; height: 4px; }
+    @keyframes twinkle {
+      0%, 100% { opacity: 0.3; }
+      50% { opacity: 1; }
+    }
+    .vol-main {
+      position: relative;
+      z-index: 2;
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 24px 16px 48px;
+      box-sizing: border-box;
+    }
+    .vol-header {
+      text-align: center;
+      margin-bottom: 8px;
+    }
+    .vol-header h1 {
+      margin: 0 0 6px 0;
+      font-size: 1.5rem;
+    }
+    .vol-sub {
+      margin: 0 0 14px 0;
+      font-size: 13px;
+      color: #888;
+      line-height: 1.45;
+      max-width: 36rem;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .vol-status-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-size: 13px;
+      color: #888;
+      margin-bottom: 16px;
+    }
+    .vol-status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #f87171;
+    }
+    .vol-status-dot.connected { background: #4ade80; }
+    .vol-platform {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    .vol-platform label { color: #888; font-size: 14px; }
+    .vol-platform select {
+      background: #1e1e1e;
+      color: #e0e0e0;
+      border: 2px solid #444;
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 14px;
+      cursor: pointer;
+      outline: none;
+    }
+    .vol-platform select:hover { border-color: #666; }
+    .vol-platform select:focus { border-color: #4a9eff; }
+    .vol-nav {
+      text-align: center;
+      margin-bottom: 18px;
+    }
+    .vol-nav a {
+      color: #6bb3ff;
+      font-size: 14px;
+      text-decoration: none;
+    }
+    .vol-nav a:hover { text-decoration: underline; }
+    .vol-panel {
+      background: #1a1a1a;
+      border: 2px solid #444;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .vol-table-head {
+      display: grid;
+      grid-template-columns: 36px 48px 1fr 100px;
+      gap: 8px;
+      align-items: center;
+      padding: 10px 12px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      border-bottom: 1px solid #333;
+      background: #141414;
+    }
+    .vol-row {
+      display: grid;
+      grid-template-columns: 36px 48px 1fr 100px;
+      gap: 8px;
+      align-items: center;
+      padding: 10px 12px;
+      border-bottom: 1px solid #2a2a2a;
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+    .vol-row:last-child { border-bottom: none; }
+    .vol-row:hover {
+      background: rgba(74, 222, 128, 0.08);
+    }
+    .vol-rank {
+      font-weight: 700;
+      color: #4ade80;
+      font-size: 14px;
+      text-align: center;
+    }
+    .vol-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
+      object-fit: cover;
+      background: #2a2a2a;
+    }
+    .vol-name {
+      min-width: 0;
+    }
+    .vol-name-line {
+      font-weight: 700;
+      color: #f0f0f0;
+      font-size: 14px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .vol-symbol {
+      font-size: 12px;
+      color: #4ade80;
+      margin-top: 2px;
+    }
+    .vol-amount {
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+      font-size: 13px;
+      color: #fbbf24;
+      text-align: right;
+    }
+    .vol-empty {
+      padding: 32px 16px;
+      text-align: center;
+      color: #666;
+      font-size: 14px;
+    }
+    @media (max-width: 520px) {
+      .vol-table-head, .vol-row {
+        grid-template-columns: 28px 40px 1fr 72px;
+        gap: 6px;
+        padding: 8px 10px;
+      }
+      .vol-icon { width: 36px; height: 36px; }
+      .vol-amount { font-size: 11px; }
+    }
+  </style>
 </head>
-<body data-theme="pump">
-    <canvas id="backgroundCanvas"></canvas>
-    
-    <div class="app-container">
-        <header class="app-header">
-            <div class="header-top">
-                <h1 class="app-title">PumpFun ToolKit - Scout</h1>
-                <div class="header-buttons">
-                    <button type="button" class="btn btn-secondary" id="loginBtn">
-                        <span class="btn-icon">🔑</span>
-                        Login
-                    </button>
-                    <button type="button" class="btn btn-primary" id="sortBtn">
-                        <span class="btn-icon">⇅</span>
-                        Sort
-                    </button>
-                </div>
-            </div>
-            <div class="status-container">
-                <div id="status" class="status-indicator">
-                    <canvas id="statusCanvas" width="12" height="12"></canvas>
-                    <span class="status-text" style="display: none;">Disconnected</span>
-                </div>
-                <a href="index.html" class="home-btn" title="Return to Home">
-                    <span class="btn-icon">🏠</span>
-                    Home
-                </a>
-                <button type="button" class="home-btn" id="settingsBtn" title="Settings">
-                    <span class="btn-icon">⚙</span>
-                    Settings
-                </button>
-                <button type="button" class="home-btn" id="helpBtn" title="How Scout works">
-                    <span class="btn-icon">?</span>
-                    Help
-                </button>
-            </div>
-        </header>
+<body>
+  <canvas id="backgroundCanvas"></canvas>
+  <div class="stars-container" id="starsContainer" aria-hidden="true"></div>
 
-        <div class="token-events-ticker-container" id="tokenEventsTickerContainer">
-            <div class="top-live-stream-slot" id="topLiveStreamSlot">
-                <div class="top-live-stream-content" id="topLiveStreamContent">
-                    <div class="top-live-stream-waiting">Waiting for stream...</div>
-                </div>
-            </div>
-            <div class="token-events-ticker-wrapper">
-                <div class="token-events-ticker" id="tokenEventsTicker">
-                    <!-- Token events will be inserted here -->
-                </div>
-            </div>
-        </div>
+  <div class="vol-main">
+    <header class="vol-header">
+      <h1>Volume Monitor</h1>
+      <p class="vol-sub">Top 10 tokens by <strong>current 1-minute</strong> trading volume (buy + sell, SOL). Rankings refresh live as trades stream from the server.</p>
+    </header>
 
-        <main class="app-main">
-            <section class="matched-tokens-section full-width">
-                    <div class="section-header-with-action">
-                        <h2>Tokens</h2>
-                        <div style="display: flex; align-items: center; gap: 1rem;">
-                            <div class="token-count" id="tokenCount">0 tokens</div>
-                            <div class="resort-indicator" id="resortIndicator" style="display: none;">
-                                <div class="resort-progress-container">
-                                    <div class="resort-progress-bar"></div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="tokens-grid" id="tokensContainer">
-                        <div class="empty-state">
-                            <canvas id="emptyTokensCanvas" width="80" height="80"></canvas>
-                            <p>No tokens loaded yet</p>
-                        </div>
-                    </div>
-                </section>
-        </main>
+    <div class="vol-status-row">
+      <span class="vol-status-dot" id="volStatusDot"></span>
+      <span id="volStatusText">Disconnected</span>
     </div>
 
-    <!-- Sort Options Modal -->
-    <div class="modal-overlay" id="sortModal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2 class="modal-title">Sort Options</h2>
-                <button type="button" class="modal-close" id="closeSortModalBtn">×</button>
-            </div>
-            <div class="modal-body">
-                <div class="modal-button-groups">
-                    <div class="button-group">
-                        <div class="group-label">Sort By</div>
-                        <div class="button-group-buttons">
-                            <button type="button" class="modal-action-btn" data-sort="recent">
-                                Most Recent
-                            </button>
-                            <button type="button" class="modal-action-btn" data-sort="marketcap">
-                                Highest Marketcap
-                            </button>
-                            <button type="button" class="modal-action-btn" data-sort="volume">
-                                Total Volume
-                            </button>
-                            <button type="button" class="modal-action-btn" data-sort="volume1m">
-                                1 Min Volume
-                            </button>
-                            <button type="button" class="modal-action-btn" data-sort="volume5m">
-                                5 Min Volume
-                            </button>
-                            <button type="button" class="modal-action-btn" data-sort="volume15m">
-                                15 Min Volume
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-actions">
-                <button type="button" class="btn btn-secondary" id="cancelSortBtn">Cancel</button>
-            </div>
-        </div>
+    <div class="vol-platform">
+      <label for="platformSelect">Trading platform:</label>
+      <select id="platformSelect" aria-label="Open charts on">
+        <option value="axiom">Axiom</option>
+        <option value="gmgn">GMGN</option>
+        <option value="terminal">Terminal</option>
+      </select>
     </div>
 
-    <!-- Settings Modal -->
-    <div class="modal-overlay" id="settingsModal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2 class="modal-title">Settings</h2>
-                <button type="button" class="modal-close" id="closeSettingsModalBtn">×</button>
-            </div>
-            
-            <div class="modal-body">
-                <div class="settings-section">
-                    <div class="settings-item">
-                        <label class="settings-label">On Token Click</label>
-                        <div class="settings-button-group">
-                            <button type="button" class="settings-option-btn" data-value="pumpfun">Pump.Fun</button>
-                            <button type="button" class="settings-option-btn" data-value="pumpfun-advanced">Pump.Fun Advanced</button>
-                            <button type="button" class="settings-option-btn" data-value="gmgn">GMGN</button>
-                            <button type="button" class="settings-option-btn" data-value="axiom">Axiom</button>
-                            <button type="button" class="settings-option-btn" data-value="copy-ca">Copy CA</button>
-                        </div>
-                    </div>
-                    <div class="settings-item">
-                        <label for="alertVolume" class="settings-label">Alert Sound Volume</label>
-                        <div class="volume-control">
-                            <input type="range" id="alertVolume" class="volume-slider" min="0" max="100" value="50" step="1">
-                            <span class="volume-value" id="alertVolumeValue">50%</span>
-                        </div>
-                    </div>
-                    <div class="settings-item">
-                        <label class="settings-label">Theme</label>
-                        <div class="settings-button-group theme-buttons">
-                            <button type="button" class="settings-option-btn theme-btn" data-theme="dark">Dark</button>
-                            <button type="button" class="settings-option-btn theme-btn" data-theme="ocean">Ocean</button>
-                            <button type="button" class="settings-option-btn theme-btn" data-theme="pump">Pump</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="modal-actions">
-                <button type="button" class="btn btn-primary" id="saveSettingsBtn">Save</button>
-                <button type="button" class="btn btn-secondary" id="cancelSettingsBtn">Cancel</button>
-            </div>
-        </div>
+    <div class="vol-nav">
+      <a href="index.html">← Home</a>
     </div>
 
-    <!-- Help Modal -->
-    <div class="modal-overlay" id="helpModal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2 class="modal-title">How Scout Works</h2>
-                <button type="button" class="modal-close" id="closeHelpBtn">×</button>
-            </div>
-            <div class="modal-body">
-                <div class="help-section">
-                    <h3>Sorting Methods</h3>
-                    <p><strong>Standard sorting methods:</strong></p><p><strong>Most Recent</strong>, <strong>Highest Marketcap</strong>, and <strong>Total Volume</strong>.</p>
-                    <br>
-                    <p><strong>IncrementalVolume Sorting:</strong></p><p>Sorts tokens by trading volume in the specified time window. Useful for finding tokens with recent activity. Volume-based sorts automatically refresh every 5 seconds to keep the list current.</p>
-                </div>
-                
-                <div class="help-section">
-                    <h3>Alert Sounds</h3>
-                    <p>When a token completes its migration or when Dex payment statuses change, you'll hear alert sounds. The volume can be adjusted in Settings using the "Alert Sound Volume" slider. Positive sounds play for completed migrations and approved payments, while negative sounds indicate cancelled payments.</p>
-                </div>
-                
-                <div class="help-section">
-                    <h3>Dex Icons</h3>
-                    <p><strong>Dex payment badges are on the top left of the token card.</strong></p>
-                    <p><strong>⏳:</strong> Dex payment processing.</p>
-                    <p><strong>✓:</strong> Dex successfully paid.</p>
-                    <p><strong>✗:</strong> Dex payment cancelled.</p>
-                </div>
-            </div>
-            <div class="modal-actions">
-                <button type="button" class="btn btn-primary" id="closeHelpBtn2">Got it</button>
-            </div>
-        </div>
+    <div class="vol-panel">
+      <div class="vol-table-head">
+        <span>#</span>
+        <span></span>
+        <span>Token</span>
+        <span style="text-align:right">1m Vol</span>
+      </div>
+      <div id="volList"></div>
     </div>
+  </div>
 
-    <!-- DM Alerts Modal -->
-    <div class="modal-overlay" id="dmAlertsModal">
-        <div class="modal-content delete-confirm-modal">
-            <div class="modal-header">
-                <h2 class="modal-title">DM Alerts</h2>
-                <button type="button" class="modal-close" id="closeDmAlertsBtn">×</button>
-            </div>
-            <div class="modal-body">
-                <div class="dm-alerts-slideshow-container">
-                     <!-- Slide 0: Choose Action (Create Profile or Login) -->
-                    <div class="dm-alerts-slide active" data-slide="0">
-                        <h3 style="margin-bottom: 1rem; color: var(--text-primary);">DM Alerts</h3>
-                        <p style="margin-bottom: 2rem; color: var(--text-secondary); font-size: 0.9rem; text-align: center;">
-                            Save your alerts and receive notifications via Telegram.
-                        </p>
-                        <div class="modal-actions" style="flex-direction: column; gap: 1rem; margin-top: 2rem;">
-                            <button type="button" class="btn btn-primary" id="createProfileOptionBtn" style="width: 100%;">Create New Profile</button>
-                            <button type="button" class="btn btn-secondary" id="loginOptionBtn" style="width: 100%;">Log In</button>
-                        </div>
-                    </div>
+  <script>
+    const LS_PLATFORM = 'scout.volume.platform.v1';
+    const tokens = new Map();
+    let socket = null;
 
-                    <!-- Slide 1: Username Entry (Create Profile) -->
-                    <div class="dm-alerts-slide" data-slide="1">
-                        <h3 style="margin-bottom: 1rem; color: var(--text-primary);">Create Profile</h3>
-                        <p style="margin-bottom: 1.5rem; color: var(--text-secondary); font-size: 0.9rem;">
-                            Choose a username to save your alerts and link to Telegram.
-                        </p>
-                        <div class="form-group">
-                            <label for="usernameInput" style="display: block; margin-bottom: 0.5rem; color: var(--text-secondary); font-size: 0.875rem;">
-                                Username (up to 16 characters, letters and numbers only)
-                            </label>
-                            <input 
-                                type="text" 
-                                id="usernameInput" 
-                                class="form-input" 
-                                maxlength="16" 
-                                pattern="[a-zA-Z0-9]+"
-                                placeholder="Enter username"
-                                style="width: 100%; padding: 0.75rem; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-secondary); color: var(--text-primary); font-size: 1rem;"
-                            >
-                            <div id="usernameError" style="color: var(--danger); font-size: 0.75rem; margin-top: 0.5rem; display: none;"></div>
-                        </div>
-                        <div class="modal-actions" style="margin-top: 1.5rem;">
-                            <button type="button" class="btn btn-secondary" id="backToOptionsBtn">Back</button>
-                            <button type="button" class="btn btn-primary" id="checkUsernameBtn">Check Availability</button>
-                        </div>
-                    </div>
+    function initStars() {
+      const el = document.getElementById('starsContainer');
+      if (!el) return;
+      const sizes = ['small', 'medium', 'large'];
+      for (let i = 0; i < 90; i++) {
+        const s = document.createElement('div');
+        s.className = 'star ' + sizes[Math.floor(Math.random() * 3)];
+        s.style.left = Math.random() * 100 + '%';
+        s.style.top = Math.random() * 100 + '%';
+        s.style.animationDelay = Math.random() * 3 + 's';
+        el.appendChild(s);
+      }
+    }
 
-                    <!-- Slide 2: Password Entry (Create Profile) -->
-                    <div class="dm-alerts-slide" data-slide="2">
-                        <h3 style="margin-bottom: 1rem; color: var(--text-primary);">Set Password</h3>
-                        <p style="margin-bottom: 1.5rem; color: var(--text-secondary); font-size: 0.9rem;">
-                            Username <span id="confirmedUsername" style="color: var(--success); font-weight: 600;"></span> is available!
-                        </p>
-                        <div class="form-group">
-                            <label for="passwordInput" style="display: block; margin-bottom: 0.5rem; color: var(--text-secondary); font-size: 0.875rem;">
-                                Password (minimum 4 characters)
-                            </label>
-                            <input 
-                                type="password" 
-                                id="passwordInput" 
-                                class="form-input" 
-                                minlength="4"
-                                placeholder="Enter password"
-                                style="width: 100%; padding: 0.75rem; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-secondary); color: var(--text-primary); font-size: 1rem;"
-                            >
-                            <div id="passwordError" style="color: var(--danger); font-size: 0.75rem; margin-top: 0.5rem; display: none;"></div>
-                        </div>
-                        <div class="modal-actions" style="margin-top: 1.5rem;">
-                            <button type="button" class="btn btn-secondary" id="backToUsernameBtn">Back</button>
-                            <button type="button" class="btn btn-primary" id="createProfileBtn">Create Profile</button>
-                        </div>
-                    </div>
+    class HomeCanvasAnimation {
+      constructor() {
+        this.canvas = document.getElementById('backgroundCanvas');
+        if (!this.canvas) return;
+        this.ctx = this.canvas.getContext('2d');
+        this.bars = [];
+        this.setupCanvas();
+        this.createBars();
+        this.animate();
+      }
+      setupCanvas() {
+        const resize = () => {
+          this.canvas.width = window.innerWidth;
+          this.canvas.height = window.innerHeight;
+          this.createBars();
+        };
+        resize();
+        window.addEventListener('resize', resize);
+      }
+      createBars() {
+        const width = this.canvas.width;
+        const height = this.canvas.height;
+        const barCount = Math.floor(width / 20);
+        this.bars = [];
+        for (let i = 0; i < barCount; i++) {
+          this.bars.push({
+            x: i * (width / barCount),
+            height: Math.random() * height * 0.25,
+            targetHeight: Math.random() * height * 0.25,
+            speed: 0.005 + Math.random() * 0.01,
+            phase: Math.random() * Math.PI * 2,
+            waveSpeed: 0.15 + Math.random() * 0.15,
+          });
+        }
+      }
+      animate() {
+        if (!this.canvas) return;
+        const ctx = this.ctx;
+        const width = this.canvas.width;
+        const height = this.canvas.height;
+        const time = Date.now() * 0.001;
+        ctx.fillStyle = '#1a1a1a';
+        ctx.fillRect(0, 0, width, height);
+        const barWidth = width / this.bars.length;
+        this.bars.forEach((bar, i) => {
+          bar.targetHeight =
+            height * 0.1 +
+            Math.sin(time * bar.waveSpeed + bar.phase) * (height * 0.15) +
+            Math.sin(time * bar.waveSpeed * 0.7 + i * 0.1) * (height * 0.05);
+          bar.height += (bar.targetHeight - bar.height) * bar.speed;
+          const barHeight = Math.max(1, bar.height);
+          const barX = bar.x;
+          const barY = height - barHeight;
+          const gradient = ctx.createLinearGradient(barX, barY, barX, height);
+          gradient.addColorStop(0, 'rgba(74, 222, 128, 0.15)');
+          gradient.addColorStop(0.5, 'rgba(74, 222, 128, 0.08)');
+          gradient.addColorStop(1, 'rgba(74, 222, 128, 0.03)');
+          ctx.fillStyle = gradient;
+          ctx.fillRect(barX, barY, barWidth - 2, barHeight);
+        });
+        requestAnimationFrame(() => this.animate());
+      }
+    }
 
-                    <!-- Slide 3: Login / Profile Management -->
-                    <div class="dm-alerts-slide" data-slide="3">
-                        <h3 style="margin-bottom: 1rem; color: var(--text-primary);">Profile Management</h3>
-                        <div id="profileCreatedMessage" style="display: none; margin-bottom: 1.5rem; padding: 1rem; background: rgba(74, 222, 128, 0.1); border: 1px solid var(--success); border-radius: var(--radius-sm); color: var(--success);">
-                            Profile created successfully!
-                        </div>
-                        <div id="loginForm" style="display: none;">
-                            <p style="margin-bottom: 1.5rem; color: var(--text-secondary); font-size: 0.9rem;">
-                                Log in to manage your alerts.
-                            </p>
-                            <div class="form-group" style="margin-bottom: 1rem;">
-                                <label for="loginUsername" style="display: block; margin-bottom: 0.5rem; color: var(--text-secondary); font-size: 0.875rem;">Username</label>
-                                <input 
-                                    type="text" 
-                                    id="loginUsername" 
-                                    class="form-input" 
-                                    placeholder="Enter username"
-                                    style="width: 100%; padding: 0.75rem; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-secondary); color: var(--text-primary); font-size: 1rem;"
-                                >
-                            </div>
-                            <div class="form-group" style="margin-bottom: 1.5rem;">
-                                <label for="loginPassword" style="display: block; margin-bottom: 0.5rem; color: var(--text-secondary); font-size: 0.875rem;">Password</label>
-                                <input 
-                                    type="password" 
-                                    id="loginPassword" 
-                                    class="form-input" 
-                                    placeholder="Enter password"
-                                    style="width: 100%; padding: 0.75rem; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-secondary); color: var(--text-primary); font-size: 1rem;"
-                                >
-                                <div id="loginError" style="color: var(--danger); font-size: 0.75rem; margin-top: 0.5rem; display: none;"></div>
-                            </div>
-                            <div class="modal-actions">
-                                <button type="button" class="btn btn-secondary" id="backToOptionsFromLoginBtn">Back</button>
-                                <button type="button" class="btn btn-primary" id="loginSubmitBtn">Log In</button>
-                            </div>
-                        </div>
-                        <div id="profileActions" style="display: none;">
-                            <p style="margin-bottom: 1.5rem; color: var(--text-secondary); font-size: 0.9rem;">
-                                Logged in as: <span id="loggedInUsername" style="color: var(--success); font-weight: 600;"></span>
-                            </p>
-                            <div class="modal-actions" style="flex-direction: column; gap: 0.75rem;">
-                                <button type="button" class="btn btn-secondary" id="linkTelegramBtn" style="width: 100%; opacity: 0.6; cursor: not-allowed;" disabled>
-                                    Link to Telegram
-                                </button>
-                                <button type="button" class="btn btn-secondary" id="logoutBtn" style="width: 100%;">Log Out</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
+    function currentMinuteTs() {
+      return Math.floor(Date.now() / 60000) * 60000;
+    }
 
-    <script src="scout.js"></script>
+    function volumeOneMinute(tradesPerMinute) {
+      const cm = currentMinuteTs();
+      if (!Array.isArray(tradesPerMinute)) return 0;
+      const e = tradesPerMinute.find((t) => t.minute === cm);
+      if (!e) return 0;
+      return (Number(e.buyVolume) || 0) + (Number(e.sellVolume) || 0);
+    }
+
+    function mergeTokenUpdate(prev, data) {
+      const merged = { ...prev, ...data };
+      if (!data.tradesPerMinute || !Array.isArray(data.tradesPerMinute)) {
+        if (prev.tradesPerMinute) merged.tradesPerMinute = prev.tradesPerMinute;
+      }
+      return merged;
+    }
+
+    function escapeHtml(s) {
+      if (s == null) return '';
+      const d = document.createElement('div');
+      d.textContent = String(s);
+      return d.innerHTML;
+    }
+
+    function tokenImageUrl(t) {
+      if (t.image_uri) return t.image_uri;
+      if (t.image) return t.image;
+      if (t.mint) return 'https://images.pump.fun/coin-image/' + t.mint + '?variant=600x600';
+      return '';
+    }
+
+    function chartUrl(mint) {
+      const sel = document.getElementById('platformSelect');
+      const platform = sel?.value || 'axiom';
+      switch (platform) {
+        case 'gmgn':
+          return 'https://gmgn.ai/sol/token/' + encodeURIComponent(mint);
+        case 'terminal':
+          return 'https://trade.padre.gg/trade/solana/' + encodeURIComponent(mint);
+        case 'axiom':
+        default:
+          return 'https://axiom.trade/t/' + encodeURIComponent(mint) + '?chain=sol';
+      }
+    }
+
+    function formatVolSol(v) {
+      if (!v || v === 0) return '0';
+      if (v >= 1000) return v.toLocaleString(undefined, { maximumFractionDigits: 1 });
+      return v.toLocaleString(undefined, { maximumFractionDigits: 3 });
+    }
+
+    function renderList() {
+      const host = document.getElementById('volList');
+      if (!host) return;
+
+      const arr = Array.from(tokens.values());
+      arr.sort((a, b) => volumeOneMinute(b.tradesPerMinute) - volumeOneMinute(a.tradesPerMinute));
+      const top = arr.slice(0, 10);
+
+      if (top.length === 0) {
+        host.innerHTML = '<div class="vol-empty">No tokens yet. Connect to the server and wait for the feed.</div>';
+        return;
+      }
+
+      host.innerHTML = top
+        .map((t, i) => {
+          const vol = volumeOneMinute(t.tradesPerMinute);
+          const img = tokenImageUrl(t);
+          const mint = t.mint || '';
+          return (
+            '<div class="vol-row" data-mint="' +
+            escapeHtml(mint) +
+            '" role="button" tabindex="0">' +
+            '<span class="vol-rank">' +
+            (i + 1) +
+            '</span>' +
+            (img
+              ? '<img class="vol-icon" src="' + escapeHtml(img) + '" alt="" loading="lazy" />'
+              : '<div class="vol-icon"></div>') +
+            '<div class="vol-name">' +
+            '<div class="vol-name-line">' +
+            escapeHtml(t.name || 'Unknown') +
+            '</div>' +
+            '<div class="vol-symbol">' +
+            escapeHtml(t.symbol || '') +
+            '</div></div>' +
+            '<span class="vol-amount">' +
+            formatVolSol(vol) +
+            ' <span style="color:#888;font-size:11px">SOL</span></span>' +
+            '</div>'
+          );
+        })
+        .join('');
+
+      host.querySelectorAll('.vol-row').forEach((row) => {
+        const open = () => {
+          const mint = row.getAttribute('data-mint');
+          if (mint) window.open(chartUrl(mint), '_blank', 'noopener,noreferrer');
+        };
+        row.addEventListener('click', open);
+        row.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            open();
+          }
+        });
+      });
+    }
+
+    function setConnected(ok) {
+      const dot = document.getElementById('volStatusDot');
+      const tx = document.getElementById('volStatusText');
+      if (dot) dot.classList.toggle('connected', ok);
+      if (tx) tx.textContent = ok ? 'Connected' : 'Disconnected';
+    }
+
+    function wirePlatformPersistence() {
+      const sel = document.getElementById('platformSelect');
+      if (!sel) return;
+      try {
+        const saved = localStorage.getItem(LS_PLATFORM);
+        if (saved && ['axiom', 'gmgn', 'terminal'].includes(saved)) sel.value = saved;
+      } catch (_) {}
+      sel.addEventListener('change', () => {
+        try {
+          localStorage.setItem(LS_PLATFORM, sel.value);
+        } catch (_) {}
+        renderList();
+      });
+    }
+
+    function connectSocket() {
+      const meta = document.querySelector('meta[name="socket-backend-url"]');
+      const backend = meta?.getAttribute('content')?.trim() || '';
+      const socketUrl = backend || window.location.origin;
+      socket = io(socketUrl, { transports: ['websocket', 'polling'] });
+
+      socket.on('connect', () => setConnected(true));
+      socket.on('disconnect', () => setConnected(false));
+      socket.on('connect_error', () => setConnected(false));
+
+      socket.on('tokens:all', (list) => {
+        tokens.clear();
+        (list || []).forEach((t) => {
+          if (!t.mint) return;
+          const copy = { ...t };
+          if (!Array.isArray(copy.tradesPerMinute)) copy.tradesPerMinute = [];
+          tokens.set(t.mint, copy);
+        });
+        renderList();
+      });
+
+      socket.on('token:new', (t) => {
+        if (!t.mint) return;
+        const copy = { ...t };
+        if (!Array.isArray(copy.tradesPerMinute)) copy.tradesPerMinute = [];
+        tokens.set(t.mint, copy);
+        renderList();
+      });
+
+      socket.on('token:update', (data) => {
+        if (!data.mint) return;
+        const prev = tokens.get(data.mint) || {};
+        tokens.set(data.mint, mergeTokenUpdate(prev, data));
+        renderList();
+      });
+
+      socket.on('token:remove', (payload) => {
+        const mint = payload && payload.mint;
+        if (mint) {
+          tokens.delete(mint);
+          renderList();
+        }
+      });
+    }
+
+    function tickMinute() {
+      renderList();
+    }
+
+    function init() {
+      wirePlatformPersistence();
+      connectSocket();
+      setInterval(tickMinute, 1000);
+    }
+
+    initStars();
+    new HomeCanvasAnimation();
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
+  </script>
 </body>
 </html>
-

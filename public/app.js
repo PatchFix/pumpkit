@@ -129,7 +129,6 @@ class AlertApp {
         this.dexScreenerStatuses = new Map(); // Track status alerts already triggered (slot -> Set of statuses)
         this.solanaPriceUSD = 0;
         this.currentMetas = []; // Store current metas for ticker
-        this.developerTokensCache = new Map(); // Cache developer tokens to avoid spam requests
         this.pendingDeleteId = null;
         this.pendingDexSlot = null;
         this.loadedImages = new Set(); // Track which image URLs have been successfully loaded
@@ -1045,12 +1044,10 @@ class AlertApp {
             const type = this.alertType.value;
             const valueInput = document.getElementById('alertValue');
             const thresholdInput = document.getElementById('alertThreshold');
-            const percentageInput = document.getElementById('alertPercentage');
             const nameInput = document.getElementById('alertName');
             
             let value = valueInput.value.trim();
             const threshold = thresholdInput.value.trim();
-            const percentage = percentageInput.value.trim();
             const name = nameInput.value.trim();
 
             if (!type) {
@@ -1062,11 +1059,6 @@ class AlertApp {
             if (type === 'deployer-marketcap') {
                 if (!threshold) {
                     window.alert('Please enter a market cap threshold');
-                    return;
-                }
-            } else if (type === 'deployer-bonded') {
-                if (!percentage) {
-                    window.alert('Please enter a percentage');
                     return;
                 }
             } else {
@@ -1082,17 +1074,15 @@ class AlertApp {
 
             const alertData = {
                 type: type,
-                value: value || null // Allow null for marketcap/bonded alerts
+                value: value || null // Allow null for marketcap alerts
             };
 
             if (type === 'deployer-marketcap' && threshold) {
                 alertData.threshold = parseFloat(threshold);
-            } else if (type === 'deployer-bonded' && percentage) {
-                alertData.percentage = parseFloat(percentage);
             }
             
             // Add name for developer alerts if provided
-            if ((type === 'deployer-match' || type === 'deployer-marketcap' || type === 'deployer-bonded') && name) {
+            if ((type === 'deployer-match' || type === 'deployer-marketcap') && name) {
                 alertData.name = name;
             }
 
@@ -1191,7 +1181,7 @@ class AlertApp {
 
     getAlertCategory(alertType) {
         const tokenTypes = ['ticker-exact', 'ticker-contains', 'name-exact', 'name-contains'];
-        const developerTypes = ['deployer-match', 'deployer-marketcap', 'deployer-bonded'];
+        const developerTypes = ['deployer-match', 'deployer-marketcap'];
         const socialTypes = ['twitter-handle', 'website-contains'];
 
         if (tokenTypes.includes(alertType)) return 'token';
@@ -1320,12 +1310,6 @@ class AlertApp {
             thresholdInput.required = true;
             document.getElementById('alertThresholdLabel').textContent = 'Market Cap Threshold (USD)';
             thresholdInput.placeholder = 'Enter market cap in USD...';
-        } else if (type === 'deployer-bonded') {
-            this.valueGroup.style.display = 'none';
-            this.percentageGroup.style.display = 'block';
-            this.nameGroup.style.display = 'none';
-            const percentageInputField = document.getElementById('alertPercentage');
-            percentageInputField.required = true;
         } else if (type === 'twitter-handle') {
             valueLabel.textContent = 'Twitter Username';
             alertValue.placeholder = 'Enter Twitter username (without @)...';
@@ -1756,11 +1740,6 @@ class AlertApp {
                     return `${alert.name}\n$${threshold} Marketcap`;
                 }
                 return `Dev Token Above\n$${threshold} Marketcap`;
-            case 'deployer-bonded':
-                if (alert.name) {
-                    return `${alert.name}\n${alert.percentage}% Bonded`;
-                }
-                return `Developer has\n${alert.percentage}% tokens bonded`;
             case 'twitter-handle':
                 return `Twitter handle matches "@${alert.value}"`;
             case 'website-contains':
@@ -2472,34 +2451,6 @@ class AlertApp {
         return null;
     }
 
-    async fetchDeveloperTokens(address) {
-        try {
-            const response = await fetch(`/api/developer-tokens/${address}`);
-            
-            if (!response.ok) {
-                return null;
-            }
-            
-            const data = await response.json();
-            
-            // Handle different response structures
-            if (Array.isArray(data)) {
-                return data;
-            } else if (data && Array.isArray(data.data)) {
-                return data.data;
-            } else if (data && Array.isArray(data.coins)) {
-                return data.coins;
-            } else if (data && Array.isArray(data.items)) {
-                return data.items;
-            }
-            
-            return null;
-        } catch (error) {
-            console.error(`Error fetching developer tokens for ${address}:`, error.message);
-            return null;
-        }
-    }
-
     async checkAlert(alert, token) {
         if (!alert.enabled) return false;
 
@@ -2527,51 +2478,6 @@ class AlertApp {
                 const marketCapUSD = token.value * this.solanaPriceUSD;
                 return marketCapUSD >= alert.threshold;
             
-            case 'deployer-bonded':
-                // Check if the deployer has bonded percentage of their tokens
-                if (!token.deployer) {
-                    return false;
-                }
-                try {
-                    // Check cache first - use longer cache time (5 minutes) to prevent spam
-                    let created = this.developerTokensCache.get(token.deployer);
-                    if (!created) {
-                        // Check if there's a pending request for this deployer to avoid duplicate requests
-                        const cacheKey = `pending_${token.deployer}`;
-                        if (this.developerTokensCache.has(cacheKey)) {
-                            // Wait a bit and check cache again
-                            await new Promise(resolve => setTimeout(resolve, 500));
-                            created = this.developerTokensCache.get(token.deployer);
-                            if (created) {
-                                return this.calculateBondedPercentage(created, token, alert);
-                            }
-                            return false;
-                        }
-                        
-                        // Mark as pending
-                        this.developerTokensCache.set(cacheKey, true);
-                        
-                        try {
-                            created = await this.fetchDeveloperTokens(token.deployer);
-                            // Cache for 5 minutes to avoid spam
-                            if (created) {
-                                this.developerTokensCache.set(token.deployer, created);
-                                setTimeout(() => {
-                                    this.developerTokensCache.delete(token.deployer);
-                                }, 300000); // 5 minutes
-                            }
-                        } finally {
-                            // Remove pending flag
-                            this.developerTokensCache.delete(cacheKey);
-                        }
-                    }
-                    
-                    return this.calculateBondedPercentage(created, token, alert);
-                } catch (error) {
-                    console.error(`Error checking deployer-bonded alert for ${alert.id}:`, error.message);
-                    return false;
-                }
-            
             case 'twitter-handle':
                 if (!token.twitter) return false;
                 const twitterUsername = this.extractTwitterUsername(token.twitter);
@@ -2586,23 +2492,6 @@ class AlertApp {
                 return false;
         }
     }
-    
-    calculateBondedPercentage(created, token, alert) {
-        if (!created || !Array.isArray(created) || created.length === 0) {
-            return false;
-        }
-        
-        // Filter out the current token (by mint) and calculate bonded percentage
-        const otherTokens = created.filter(t => t.mint !== token.mint);
-        if (otherTokens.length === 0) {
-            return false; // No other tokens to check
-        }
-        
-        const bondedTokens = otherTokens.filter(t => t.complete === true);
-        const bondedPercentage = (bondedTokens.length / otherTokens.length) * 100;
-        
-        return bondedPercentage >= alert.percentage;
-    }
 
     async checkAlertsForToken(token, isNewToken = false) {
         if (!token.mint) return;
@@ -2614,7 +2503,7 @@ class AlertApp {
             try {
                 // Skip deployer alerts on trade updates (only check on new tokens)
                 // This prevents spam API requests on every trade
-                if (!isNewToken && (alert.type === 'deployer-bonded' || alert.type === 'deployer-marketcap')) {
+                if (!isNewToken && alert.type === 'deployer-marketcap') {
                     // Skip deployer alerts entirely on trade updates
                     continue;
                 }

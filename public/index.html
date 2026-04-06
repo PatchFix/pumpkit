@@ -1,1012 +1,1647 @@
-
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Dex Payment Monitor</title>
-  <style>
-    /* —— Background layers —— */
-    html, body {
-      height: 100%;
-      margin: 0;
-      overflow: hidden;
-    }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PumpFun ToolKit</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        body {
+            position: relative;
+            overflow: hidden;
+        }
 
-    body {
-      position: relative;
-      color: #e0e0e0;
-      font-family: Arial, sans-serif;
-    }
+        #backgroundCanvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            pointer-events: none;
+        }
 
-    #backgroundCanvas {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      z-index: 0;
-      pointer-events: none;
-    }
+        .stars-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            pointer-events: none;
+            overflow: hidden;
+        }
 
-    .stars-container {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      z-index: 1;
-      pointer-events: none;
-      overflow: hidden;
-    }
+        .star {
+            position: absolute;
+            background: white;
+            border-radius: 50%;
+            animation: twinkle 3s ease-in-out infinite;
+        }
 
-    .star {
-      position: absolute;
-      background: white;
-      border-radius: 50%;
-      animation: twinkle 3s ease-in-out infinite;
-    }
+        .star.small {
+            width: 2px;
+            height: 2px;
+        }
 
-    .star.small { width: 2px; height: 2px; }
-    .star.medium { width: 3px; height: 3px; }
-    .star.large { width: 4px; height: 4px; }
+        .star.medium {
+            width: 3px;
+            height: 3px;
+        }
 
-    @keyframes twinkle {
-      0%, 100% { opacity: 0.3; }
-      50% { opacity: 1; }
-    }
+        .star.large {
+            width: 4px;
+            height: 4px;
+        }
 
-    .dexmon-main {
-      position: relative;
-      z-index: 2;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: flex-start;
-      height: 100%;
-      box-sizing: border-box;
-      padding-top: 40px;
-      overflow: hidden;
-    }
+        @keyframes twinkle {
+            0%, 100% {
+                opacity: 0.3;
+            }
+            50% {
+                opacity: 1;
+            }
+        }
 
-    h1 { margin-bottom: 10px; }
-    .platform-selector {
-      margin-bottom: 20px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-    .platform-selector label {
-      color: #888;
-      font-size: 14px;
-    }
-    .platform-selector select {
-      background-color: #1e1e1e;
-      color: #e0e0e0;
-      border: 2px solid #444;
-      border-radius: 6px;
-      padding: 8px 12px;
-      font-size: 14px;
-      cursor: pointer;
-      outline: none;
-    }
-    .platform-selector select:hover {
-      border-color: #666;
-    }
-    .platform-selector select:focus {
-      border-color: #4a9eff;
-    }
-    .grid { display: flex; gap: 20px; }
-    .box {
-      width: 200px;
-      height: 200px;
-      background-color: #1e1e1e;
-      border: 4px solid #444;
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      position: relative;
-      transition: border-color 0.3s, box-shadow 0.3s;
-    }
-    .box-stack {
-      position: relative;
-      width: 100%;
-      height: 100%;
-      border-radius: 8px;
-      overflow: hidden;
-    }
-    .box-token-img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      display: block;
-    }
-    /* DexScreener 3:1 header banner, centered vertically over the token image */
-    .box-dex-banner {
-      position: absolute;
-      left: 0;
-      right: 0;
-      top: 50%;
-      transform: translateY(-50%);
-      width: 100%;
-      aspect-ratio: 3 / 1;
-      object-fit: cover;
-      z-index: 1;
-      display: none;
-      pointer-events: none;
-    }
-    .box.has-dex-banner .box-dex-banner {
-      display: block;
-    }
-    .box-placeholder {
-      color: #666;
-      font-size: 14px;
-      text-align: center;
-      padding: 12px;
-      line-height: 1.35;
-      user-select: none;
-      pointer-events: none;
-    }
-    .remove-btn {
-      display: none;
-      margin-top: 20px; /* moved further down */
-      background-color: #3a3a3a;
-      color: #e0e0e0;
-      border: none;
-      border-radius: 6px;
-      padding: 10px 16px; /* bigger button */
-      font-size: 15px;   /* larger text */
-      cursor: pointer;
-    }
-    .remove-btn:hover { background-color: #575757; }
-    .box-container { display: flex; flex-direction: column; align-items: center; }
-    .token-info {
-      margin-top: 10px;
-      padding: 10px;
-      background-color: #1a1a1a;
-      border-radius: 6px;
-      width: 200px;
-      font-size: 12px;
-      display: none;
-    }
-    .token-info.visible { display: block; }
-    .info-section { margin-bottom: 8px; }
-    .info-label {
-      color: #888;
-      font-weight: bold;
-      margin-bottom: 4px;
-    }
-    .info-link {
-      color: #4a9eff;
-      text-decoration: none;
-      display: block;
-      margin: 2px 0;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .info-link:hover { color: #6bb3ff; }
-    .boost-count {
-      color: #ffa500;
-      font-weight: bold;
-    }
-    .dexmon-hint {
-      margin-top: auto;
-      padding: 16px 20px 0;
-      font-size: 13px;
-      color: #888;
-      text-align: center;
-      max-width: 28rem;
-      line-height: 1.45;
-    }
-    .dexmon-support {
-      margin-top: 12px;
-      padding: 0 20px 24px;
-      font-size: 13px;
-      color: #888;
-      text-align: center;
-      max-width: 28rem;
-      line-height: 1.45;
-    }
-    .dexmon-support-ca {
-      margin-top: 8px;
-      display: inline-block;
-      background: none;
-      border: none;
-      padding: 4px 8px;
-      font: inherit;
-      font-family: ui-monospace, Menlo, Monaco, Consolas, monospace;
-      color: #6bb3ff;
-      cursor: pointer;
-      text-decoration: underline;
-      text-underline-offset: 3px;
-    }
-    .dexmon-support-ca:hover {
-      color: #8cc8ff;
-    }
-    .dexmon-support-ca:focus-visible {
-      outline: 2px solid #4a9eff;
-      outline-offset: 2px;
-    }
+        .shooting-star {
+            position: absolute;
+            width: 2px;
+            height: 100px;
+            background: linear-gradient(to bottom, 
+                rgba(255, 255, 255, 1) 0%, 
+                rgba(96, 165, 250, 0.8) 50%, 
+                transparent 100%);
+            border-radius: 50%;
+            opacity: 0;
+            animation: shootStar 3s ease-in-out infinite;
+        }
 
-    .ca-modal-overlay {
-      display: none;
-      position: fixed;
-      inset: 0;
-      z-index: 200;
-      background: rgba(0, 0, 0, 0.58);
-      backdrop-filter: blur(4px);
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-      box-sizing: border-box;
-    }
-    .ca-modal-overlay.open {
-      display: flex;
-    }
-    .ca-modal {
-      position: relative;
-      width: 100%;
-      max-width: 400px;
-      background: linear-gradient(160deg, #282828 0%, #181818 100%);
-      border: 2px solid #3d3d3d;
-      border-radius: 16px;
-      box-shadow:
-        0 24px 56px rgba(0, 0, 0, 0.55),
-        0 0 0 1px rgba(74, 222, 128, 0.12);
-      overflow: visible;
-    }
-    .ca-modal-inner {
-      position: relative;
-      padding: 1.6rem 1.6rem 1.25rem;
-      padding-bottom: 4.75rem;
-      min-height: 140px;
-    }
-    .ca-modal-fox {
-      position: absolute;
-      left: 0.35rem;
-      bottom: 0.35rem;
-      width: min(132px, 36vw);
-      height: auto;
-      pointer-events: none;
-      z-index: 0;
-      filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.45));
-    }
-    .ca-modal-body {
-      position: relative;
-      z-index: 1;
-    }
-    .ca-modal-body h2 {
-      margin: 0 0 0.35rem 0;
-      font-size: 1.2rem;
-      font-weight: 700;
-      color: #f0f0f0;
-      letter-spacing: -0.02em;
-    }
-    .ca-modal-hint {
-      margin: 0 0 1rem 0;
-      font-size: 0.85rem;
-      color: #888;
-      line-height: 1.4;
-    }
-    .ca-modal-input {
-      width: 100%;
-      box-sizing: border-box;
-      padding: 12px 14px;
-      font-size: 14px;
-      font-family: ui-monospace, Menlo, Monaco, Consolas, monospace;
-      color: #e8e8e8;
-      background: #141414;
-      border: 2px solid #4a4a4a;
-      border-radius: 10px;
-      outline: none;
-      margin-bottom: 8px;
-    }
-    .ca-modal-input::placeholder {
-      color: #555;
-    }
-    .ca-modal-input:focus {
-      border-color: #4a9eff;
-      box-shadow: 0 0 0 3px rgba(74, 158, 255, 0.2);
-    }
-    .ca-modal-error {
-      font-size: 0.8rem;
-      color: #f87171;
-      margin-bottom: 10px;
-      min-height: 1.2em;
-    }
-    .ca-modal-error:empty {
-      display: none;
-    }
-    .ca-modal-actions {
-      display: flex;
-      justify-content: flex-end;
-      gap: 10px;
-      margin-top: 4px;
-    }
-    .ca-modal-actions button {
-      padding: 10px 18px;
-      font-size: 14px;
-      border-radius: 10px;
-      cursor: pointer;
-      border: none;
-      font-weight: 600;
-    }
-    .ca-modal-cancel {
-      background: #333;
-      color: #ccc;
-    }
-    .ca-modal-cancel:hover {
-      background: #444;
-    }
-    .ca-modal-submit {
-      background: linear-gradient(180deg, #4ade80 0%, #22c55e 100%);
-      color: #0a0a0a;
-    }
-    .ca-modal-submit:hover {
-      filter: brightness(1.08);
-    }
-  </style>
+        @keyframes shootStar {
+            0% {
+                opacity: 0;
+                transform: translate(0, 0) rotate(45deg);
+            }
+            10% {
+                opacity: 1;
+            }
+            90% {
+                opacity: 1;
+            }
+            100% {
+                opacity: 0;
+                transform: translate(500px, 500px) rotate(45deg);
+            }
+        }
+
+        .home-container {
+            position: relative;
+            z-index: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            min-height: 100vh;
+            padding: 2rem;
+            padding-top: 200px;
+            color: var(--text-primary);
+        }
+
+        .home-logo-wrapper {
+            position: fixed;
+            bottom: -50px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 0;
+            display: inline-block;
+        }
+
+        .home-logo {
+            max-width: 900px;
+            width: auto;
+            max-height: 600px;
+            height: auto;
+            opacity: 0;
+            transform: scale(0.8) translateY(-20px);
+            animation: fadeInScale 1s ease-out 0.3s forwards, shimmer 4s ease-in-out infinite, pulseOpacity 6s ease-in-out infinite;
+            object-fit: contain;
+            position: relative;
+            z-index: 1;
+            filter: drop-shadow(0 0 8px rgba(96, 165, 250, 0.4)) 
+                    drop-shadow(0 0 16px rgba(96, 165, 250, 0.3)) 
+                    drop-shadow(0 0 24px rgba(96, 165, 250, 0.2));
+        }
+
+        @keyframes pulseOpacity {
+            0%, 100% {
+                opacity: 0.25;
+            }
+            50% {
+                opacity: 0.35;
+            }
+        }
+
+        .home-logo.visible {
+            opacity: 0.25;
+        }
+
+        @keyframes fadeInScale {
+            to {
+                opacity: 0.25;
+                transform: scale(1) translateY(0);
+            }
+        }
+
+        @keyframes shimmer {
+            0%, 100% {
+                filter: drop-shadow(0 0 8px rgba(96, 165, 250, 0.4)) 
+                        drop-shadow(0 0 16px rgba(96, 165, 250, 0.3)) 
+                        drop-shadow(0 0 24px rgba(96, 165, 250, 0.2));
+            }
+            50% {
+                filter: drop-shadow(0 0 12px rgba(96, 165, 250, 0.6)) 
+                        drop-shadow(0 0 24px rgba(96, 165, 250, 0.4)) 
+                        drop-shadow(0 0 36px rgba(96, 165, 250, 0.3))
+                        drop-shadow(0 0 48px rgba(96, 165, 250, 0.2));
+            }
+        }
+
+
+
+        .menu-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+            width: 100%;
+            max-width: 600px;
+            opacity: 0;
+            animation: fadeInUp 0.8s ease-out 0.6s forwards;
+            position: relative;
+            z-index: 1;
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .menu-btn {
+            opacity: 0;
+            animation: fadeInButton 0.5s ease-out forwards;
+        }
+
+        .menu-section:not(.horizontal) .menu-btn:nth-child(1) {
+            animation-delay: 0.8s;
+        }
+
+        .menu-section:not(.horizontal) .menu-btn:nth-child(2) {
+            animation-delay: 0.9s;
+        }
+
+        .menu-section.horizontal .menu-btn:nth-child(1) {
+            animation-delay: 1.0s;
+        }
+
+        .menu-section.horizontal .menu-btn:nth-child(2) {
+            animation-delay: 1.1s;
+        }
+
+        .menu-section.horizontal .menu-btn:nth-child(3) {
+            animation-delay: 1.2s;
+        }
+
+        @keyframes fadeInButton {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .menu-section {
+            display: flex;
+            flex-direction: row;
+            gap: 1rem;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .project-header {
+            font-size: 2rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--accent-primary), var(--success));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: -0.02em;
+            margin: 0;
+            padding: 0;
+            text-align: center;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', 'Roboto', sans-serif;
+            white-space: nowrap;
+            position: relative;
+            width: 100%;
+        }
+
+        @media (min-width: 768px) {
+            .project-header {
+                font-size: 3rem;
+            }
+        }
+
+
+        .menu-section.horizontal {
+            flex-direction: row;
+            justify-content: center;
+            flex-wrap: nowrap;
+            gap: 0.5rem;
+        }
+
+        .menu-btn {
+            padding: 0.75rem 1.5rem;
+            background: var(--bg-tertiary);
+            border: 2px solid var(--border-color);
+            border-radius: var(--radius-md);
+            color: var(--text-primary);
+            font-size: 1.5rem;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .menu-section.horizontal .menu-btn {
+            flex: 1 1 0;
+            min-width: 0;
+            width: 0;
+            padding: 0.75rem 0.5rem;
+            font-size: 1.1rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-sizing: border-box;
+            border-width: 2px;
+            font-family: inherit;
+            line-height: 1.2;
+            letter-spacing: 0.5px;
+            min-height: 48px;
+        }
+
+        .menu-section:not(.horizontal) .menu-btn {
+            width: auto;
+            min-width: 180px;
+            max-width: 250px;
+            border-radius: 0;
+            background: linear-gradient(135deg, rgba(96, 165, 250, 0.25), rgba(139, 92, 246, 0.25));
+            border: 2px solid rgba(96, 165, 250, 0.4);
+        }
+
+        .menu-section:not(.horizontal) .menu-btn:hover {
+            background: linear-gradient(135deg, rgba(96, 165, 250, 0.35), rgba(139, 92, 246, 0.35));
+            border-color: rgba(96, 165, 250, 0.6);
+        }
+
+        .menu-btn:hover {
+            border-color: var(--accent-primary);
+            background: var(--bg-secondary);
+            box-shadow: var(--shadow-md);
+        }
+
+        .menu-btn.app-btn:hover {
+            transform: none;
+        }
+
+        .menu-btn:active {
+            transform: translateY(0);
+        }
+
+        /* Lower contrast for Dark and Pump themes */
+        body[data-theme="dark"] .menu-btn,
+        body[data-theme="pump"] .menu-btn {
+            background: var(--bg-tertiary);
+            border: 2px solid var(--border-color);
+        }
+
+        body[data-theme="dark"] .menu-btn:hover,
+        body[data-theme="pump"] .menu-btn:hover {
+            border-color: var(--accent-primary);
+            background: var(--accent-primary);
+        }
+
+        /* About and Roadmap Modals */
+        .info-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(8px);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+
+        .info-modal-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .info-modal-content {
+            background: var(--bg-secondary);
+            border-radius: var(--radius-lg);
+            width: 90%;
+            max-width: 600px;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            transform: scale(0.9);
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .info-modal-overlay.active .info-modal-content {
+            transform: scale(1);
+        }
+
+        .info-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .info-modal-title {
+            color: var(--text-primary);
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .info-modal-close {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 2rem;
+            line-height: 1;
+            cursor: pointer;
+            padding: 0;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: color 0.2s ease;
+        }
+
+        .info-modal-close:hover {
+            color: var(--text-primary);
+        }
+
+        .info-modal-body {
+            padding: 1.5rem;
+            overflow-y: auto;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+
+        .info-modal-body h3 {
+            color: var(--text-primary);
+            margin-top: 1.5rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .info-modal-body h3:first-child {
+            margin-top: 0;
+        }
+
+        .info-modal-body p {
+            margin-bottom: 1rem;
+        }
+
+        .info-modal-body ul {
+            margin-left: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .info-modal-body li {
+            margin-bottom: 0.5rem;
+        }
+
+        /* About Modal Slideshow */
+        .about-slideshow-container {
+            position: relative;
+            min-height: 300px;
+        }
+
+        .about-slide {
+            display: none;
+            animation: fadeIn 0.5s ease-in-out;
+        }
+
+        .about-slide.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateX(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .about-slideshow-navigation {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 2rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .about-slide-dots {
+            display: flex;
+            gap: 0.5rem;
+            justify-content: center;
+            flex: 1;
+        }
+
+        .about-slide-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--border-color);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .about-slide-dot.active {
+            background: var(--accent-primary);
+            width: 24px;
+            border-radius: 5px;
+        }
+
+        .about-slide-nav-btn {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 0.5rem 1rem;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 0.875rem;
+        }
+
+        .about-slide-nav-btn:hover {
+            background: var(--accent-primary);
+            border-color: var(--accent-primary);
+        }
+
+        .about-slide-nav-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Slide 1 App Cards */
+        .about-slide h3 {
+            font-size: 1.75rem;
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+            background: linear-gradient(135deg, var(--accent-primary), var(--success));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            text-align: center;
+        }
+
+        .project-intro {
+            background: linear-gradient(135deg, rgba(96, 165, 250, 0.1), rgba(74, 222, 128, 0.1));
+            border: 1px solid rgba(96, 165, 250, 0.2);
+            border-radius: var(--radius-md);
+            padding: 1rem 1.25rem;
+            margin-bottom: 1.5rem;
+            color: var(--text-secondary);
+            line-height: 1.6;
+            font-size: 0.95rem;
+        }
+
+        .project-intro p {
+            margin: 0.75rem 0;
+        }
+
+        .project-intro p:first-child {
+            margin-top: 0;
+        }
+
+        .project-intro p:last-child {
+            margin-bottom: 0;
+        }
+
+        .slide-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 1.2rem 1.4rem;
+            display: flex;
+            gap: 1rem;
+            align-items: flex-start;
+            box-shadow: var(--shadow-sm);
+            margin-bottom: 1.1rem;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .slide-card:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+
+        .slide-card.accent-green {
+            border-left: 3px solid var(--success);
+        }
+
+        .slide-card.accent-blue {
+            border-left: 3px solid rgba(96, 165, 250, 0.8);
+        }
+
+        .slide-card.accent-purple {
+            border-left: 3px solid rgba(168, 85, 247, 0.8);
+        }
+
+        .slide-card-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, rgba(96, 165, 250, 0.2), rgba(74, 222, 128, 0.2));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            flex-shrink: 0;
+        }
+
+        .slide-card-title {
+            font-size: 1.15rem;
+            font-weight: 700;
+            margin: 0 0 0.5rem;
+            color: var(--text-primary);
+        }
+
+        .slide-card-body {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            color: var(--text-secondary);
+        }
+
+        .slide-card-body p {
+            margin: 0;
+            line-height: 1.65;
+        }
+
+        .slide-card-list {
+            margin: 0;
+            padding-left: 1.25rem;
+            list-style: disc;
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem;
+            color: var(--text-primary);
+        }
+
+        .slide-card-list li {
+            font-weight: 600;
+            letter-spacing: 0.2px;
+        }
+
+        .slide-card-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+        }
+
+        @media (max-width: 640px) {
+            .slide-card {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .slide-card-icon {
+                width: 40px;
+                height: 40px;
+            }
+        }
+
+        .app-cards-container {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            margin-top: 1rem;
+        }
+
+        .app-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 0.75rem 1rem;
+            transition: all 0.3s ease;
+            border-left: 3px solid transparent;
+        }
+
+        .app-card:hover {
+            border-left-color: var(--accent-primary);
+            box-shadow: var(--shadow-md);
+            transform: translateX(4px);
+        }
+
+        .app-card-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .app-card-title {
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin: 0;
+            background: linear-gradient(135deg, var(--accent-primary), var(--success));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .app-card-badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            background: linear-gradient(135deg, rgba(96, 165, 250, 0.2), rgba(74, 222, 128, 0.2));
+            border: 1px solid rgba(96, 165, 250, 0.3);
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--accent-primary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .app-card-badge.coming-soon {
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(236, 72, 153, 0.2));
+            border-color: rgba(139, 92, 246, 0.3);
+            color: #a78bfa;
+        }
+
+        .app-card-description {
+            color: var(--text-secondary);
+            line-height: 1.6;
+            margin: 0;
+            font-size: 0.9rem;
+        }
+
+        /* Developer Slide Formatting */
+        .developer-content {
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+        }
+
+        .developer-section {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 1.25rem 1.5rem;
+            border-left: 3px solid var(--accent-primary);
+        }
+
+        .developer-section p {
+            margin: 0;
+            color: var(--text-secondary);
+            line-height: 1.7;
+        }
+
+        .developer-section:first-child {
+            background: linear-gradient(135deg, rgba(96, 165, 250, 0.1), rgba(74, 222, 128, 0.1));
+            border-left-color: var(--success);
+        }
+
+        .developer-section:nth-child(2) p {
+            color: var(--accent-primary);
+        }
+
+        .developer-contact-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            margin-top: 1.5rem;
+            padding: 0.75rem 1.5rem;
+            background: linear-gradient(135deg, rgba(29, 161, 242, 0.6), rgba(13, 139, 217, 0.6));
+            border: 1px solid rgba(29, 161, 242, 0.5);
+            border-radius: var(--radius-md);
+            color: white;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.2s ease;
+            box-shadow: var(--shadow-md);
+            cursor: pointer;
+            width: 100%;
+        }
+
+        .developer-contact-btn:hover {
+            background: linear-gradient(135deg, rgba(13, 139, 217, 0.7), rgba(10, 123, 184, 0.7));
+            border-color: rgba(29, 161, 242, 0.7);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .developer-contact-btn svg {
+            width: 18px;
+            height: 18px;
+            fill: white;
+        }
+
+        /* Roadmap Modal Slideshow */
+        .roadmap-slideshow-container {
+            position: relative;
+            min-height: 300px;
+        }
+
+        .roadmap-slide {
+            display: none;
+            animation: fadeIn 0.5s ease-in-out;
+        }
+
+        .roadmap-slide.active {
+            display: block;
+        }
+
+        .roadmap-slideshow-navigation {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 2rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .roadmap-slide-dots {
+            display: flex;
+            gap: 0.5rem;
+            justify-content: center;
+            flex: 1;
+        }
+
+        .roadmap-slide-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--border-color);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .roadmap-slide-dot.active {
+            background: var(--accent-primary);
+            width: 24px;
+            border-radius: 5px;
+        }
+
+        .roadmap-slide-nav-btn {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 0.5rem 1rem;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 0.875rem;
+        }
+
+        .roadmap-slide-nav-btn:hover {
+            background: var(--accent-primary);
+            border-color: var(--accent-primary);
+        }
+
+        .roadmap-slide-nav-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .roadmap-section {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 1.25rem 1.5rem;
+            margin-bottom: 1.25rem;
+            border-left: 3px solid var(--accent-primary);
+        }
+
+        .roadmap-slide[data-slide="1"] .roadmap-section,
+        .roadmap-slide[data-slide="2"] .roadmap-section {
+            padding: 0.75rem 1rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .roadmap-slide[data-slide="1"] .roadmap-section h4,
+        .roadmap-slide[data-slide="2"] .roadmap-section h4 {
+            font-size: 0.95rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .roadmap-slide[data-slide="1"] .roadmap-section p,
+        .roadmap-slide[data-slide="2"] .roadmap-section p {
+            font-size: 0.9rem;
+            line-height: 1.6;
+        }
+
+        .roadmap-section h4 {
+            color: var(--text-primary);
+            font-size: 1.1rem;
+            font-weight: 700;
+            margin-bottom: 0.75rem;
+            background: linear-gradient(135deg, var(--accent-primary), var(--success));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .roadmap-section p {
+            color: var(--text-secondary);
+            line-height: 1.7;
+            margin: 0;
+        }
+
+        .roadmap-section ul {
+            margin: 0.75rem 0 0 0;
+            padding-left: 1.5rem;
+            color: var(--text-secondary);
+        }
+
+        .roadmap-section li {
+            margin-bottom: 0.5rem;
+            line-height: 1.6;
+        }
+
+        .roadmap-section li:last-child {
+            margin-bottom: 0;
+        }
+
+        .roadmap-section-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            background: linear-gradient(135deg, var(--accent-primary), var(--success));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .contract-address-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.75rem;
+            z-index: 100;
+            width: 100%;
+            padding: 1rem 1rem 0.5rem 1rem;
+            box-sizing: border-box;
+            background: transparent;
+            pointer-events: none;
+        }
+
+        .contract-address-container > * {
+            pointer-events: auto;
+        }
+
+        .contract-address-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            width: 100%;
+            justify-content: center;
+        }
+
+        .contract-address {
+            padding: 0.75rem 1.5rem;
+            background: linear-gradient(135deg, rgba(96, 165, 250, 0.3), rgba(74, 222, 128, 0.3));
+            border: 1px solid rgba(96, 165, 250, 0.4);
+            border-radius: var(--radius-md);
+            color: var(--text-primary);
+            font-size: 0.75rem;
+            font-family: 'Courier New', monospace;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            user-select: none;
+            white-space: nowrap;
+            box-shadow: var(--shadow-md);
+            font-weight: 600;
+            max-width: calc(100vw - 5rem);
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        @media (min-width: 768px) {
+            .contract-address {
+                font-size: 0.875rem;
+                max-width: none;
+            }
+        }
+
+        .contract-address:hover {
+            background: linear-gradient(135deg, rgba(96, 165, 250, 0.4), rgba(74, 222, 128, 0.4));
+            border-color: rgba(96, 165, 250, 0.6);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .contract-address:active {
+            transform: translateY(0);
+        }
+
+        .contract-address.copied {
+            background: var(--success);
+            border-color: var(--success);
+            color: white;
+        }
+
+        .twitter-link {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #1DA1F2, #0d8bd9);
+            border: 1px solid #1DA1F2;
+            border-radius: var(--radius-md);
+            color: white;
+            text-decoration: none;
+            transition: all 0.2s ease;
+            box-shadow: var(--shadow-md);
+            cursor: pointer;
+        }
+
+        .twitter-link:hover {
+            background: linear-gradient(135deg, #0d8bd9, #0a7bb8);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .twitter-link svg {
+            width: 20px;
+            height: 20px;
+            fill: white;
+        }
+    </style>
 </head>
-<body>
-  <canvas id="backgroundCanvas"></canvas>
-  <div class="stars-container" id="starsContainer" aria-hidden="true"></div>
-
-  <div class="dexmon-main">
-  <h1>Dex Payment Monitor</h1>
-  <div class="platform-selector">
-    <label for="platformSelect">Trading Platform:</label>
-    <select id="platformSelect">
-      <option value="axiom">Axiom</option>
-      <option value="gmgn">GMGN</option>
-      <option value="terminal">Terminal</option>
-    </select>
-  </div>
-  <div class="grid">
-    <div class="box-container">
-      <div class="box" onclick="handleBoxClick(this)"><span class="box-placeholder">Click to add CA</span></div>
-      <div class="token-info"></div>
-      <button class="remove-btn" onclick="removeToken(this)">Remove</button>
-    </div>
-    <div class="box-container">
-      <div class="box" onclick="handleBoxClick(this)"><span class="box-placeholder">Click to add CA</span></div>
-      <div class="token-info"></div>
-      <button class="remove-btn" onclick="removeToken(this)">Remove</button>
-    </div>
-    <div class="box-container">
-      <div class="box" onclick="handleBoxClick(this)"><span class="box-placeholder">Click to add CA</span></div>
-      <div class="token-info"></div>
-      <button class="remove-btn" onclick="removeToken(this)">Remove</button>
-    </div>
-  </div>
-  <p class="dexmon-hint">Keep this tab in a separate window to prevent delayed alerts.</p>
-  <p class="dexmon-support">
-    Support this tool and future projects:<br>
-    <button type="button" class="dexmon-support-ca" id="supportTipCa" title="Click to copy contract address">
-      <span id="supportTipCaInner">[xxxx...pump]</span>
-    </button>
-  </p>
-  </div>
-
-  <div id="caModalOverlay" class="ca-modal-overlay" aria-hidden="true">
-    <div class="ca-modal" role="dialog" aria-modal="true" aria-labelledby="caModalTitle" tabindex="-1">
-      <div class="ca-modal-inner">
-        <img src="foxup.png" alt="" class="ca-modal-fox" width="132" decoding="async" />
-        <div class="ca-modal-body">
-          <h2 id="caModalTitle">Add token</h2>
-          <p class="ca-modal-hint">Paste the Solana mint (contract address) to monitor.</p>
-          <input type="text" id="caModalInput" class="ca-modal-input" placeholder="Mint address…" autocomplete="off" spellcheck="false" />
-          <p id="caModalError" class="ca-modal-error" role="alert"></p>
-          <div class="ca-modal-actions">
-            <button type="button" class="ca-modal-cancel" id="caModalCancel">Cancel</button>
-            <button type="button" class="ca-modal-submit" id="caModalSubmit">Add token</button>
-          </div>
+<body data-theme="pump">
+    <canvas id="backgroundCanvas"></canvas>
+    <div class="contract-address-container">
+        <div class="contract-address-wrapper">
+            <div class="contract-address" id="contractAddress">Contract Address: server data not found</div>
+            <div id="loginStatus" style="display: none; padding: 0.5rem 1rem; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: var(--radius-sm); font-size: 0.875rem; font-weight: 600;"></div>
+            <a href="https://x.com/nvr_knows_bst" target="_blank" rel="noopener noreferrer" class="twitter-link" id="twitterLink" title="Follow us on X">
+                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+                </svg>
+            </a>
         </div>
-      </div>
+        <h1 class="project-header">PumpFun ToolKit</h1>
     </div>
-  </div>
-
-  <script>
-    function initStars() {
-      const el = document.getElementById('starsContainer');
-      if (!el) return;
-      const sizes = ['small', 'medium', 'large'];
-      for (let i = 0; i < 90; i++) {
-        const s = document.createElement('div');
-        s.className = 'star ' + sizes[Math.floor(Math.random() * 3)];
-        s.style.left = Math.random() * 100 + '%';
-        s.style.top = Math.random() * 100 + '%';
-        s.style.animationDelay = Math.random() * 3 + 's';
-        el.appendChild(s);
-      }
-    }
-
-    class HomeCanvasAnimation {
-      constructor() {
-        this.canvas = document.getElementById('backgroundCanvas');
-        if (!this.canvas) return;
-        this.ctx = this.canvas.getContext('2d');
-        this.bars = [];
-        this.setupCanvas();
-        this.createBars();
-        this.animate();
-      }
-
-      setupCanvas() {
-        const resize = () => {
-          this.canvas.width = window.innerWidth;
-          this.canvas.height = window.innerHeight;
-          this.createBars();
-        };
-        resize();
-        window.addEventListener('resize', resize);
-      }
-
-      createBars() {
-        const width = this.canvas.width;
-        const height = this.canvas.height;
-        const barCount = Math.floor(width / 20);
-        const barWidth = width / barCount;
-        this.bars = [];
-        for (let i = 0; i < barCount; i++) {
-          this.bars.push({
-            x: i * barWidth,
-            height: Math.random() * height * 0.25,
-            targetHeight: Math.random() * height * 0.25,
-            speed: 0.005 + Math.random() * 0.01,
-            phase: Math.random() * Math.PI * 2,
-            waveSpeed: 0.15 + Math.random() * 0.15
-          });
-        }
-      }
-
-      animate() {
-        if (!this.canvas) return;
-        const ctx = this.ctx;
-        const width = this.canvas.width;
-        const height = this.canvas.height;
-        const time = Date.now() * 0.001;
-
-        ctx.fillStyle = '#1a1a1a';
-        ctx.fillRect(0, 0, width, height);
-
-        this.bars.forEach((bar, i) => {
-          bar.targetHeight =
-            height * 0.1 +
-            Math.sin(time * bar.waveSpeed + bar.phase) * (height * 0.15) +
-            Math.sin(time * bar.waveSpeed * 0.7 + i * 0.1) * (height * 0.05);
-          bar.height += (bar.targetHeight - bar.height) * bar.speed;
-
-          const barWidth = width / this.bars.length;
-          const barHeight = Math.max(1, bar.height);
-          const barX = bar.x;
-          const barY = height - barHeight;
-
-          const gradient = ctx.createLinearGradient(barX, barY, barX, height);
-          gradient.addColorStop(0, 'rgba(74, 222, 128, 0.15)');
-          gradient.addColorStop(0.5, 'rgba(74, 222, 128, 0.08)');
-          gradient.addColorStop(1, 'rgba(74, 222, 128, 0.03)');
-          ctx.fillStyle = gradient;
-          ctx.fillRect(barX, barY, barWidth - 2, barHeight);
-
-          if (barHeight > 10) {
-            const glowGradient = ctx.createLinearGradient(barX, barY, barX, barY + 15);
-            glowGradient.addColorStop(0, 'rgba(74, 222, 128, 0.08)');
-            glowGradient.addColorStop(1, 'rgba(74, 222, 128, 0)');
-            ctx.fillStyle = glowGradient;
-            ctx.fillRect(barX, barY, barWidth - 2, Math.min(15, barHeight));
-          }
-        });
-
-        requestAnimationFrame(() => this.animate());
-      }
-    }
-
-    function startDexmonBackground() {
-      initStars();
-      new HomeCanvasAnimation();
-    }
-
-    /** Paste full SPL mint when the support token is live; leave '' to keep the xxxx...pump placeholder (click shows Coming soon). */
-    const SUPPORT_TIP_MINT = '';
-
-    function abbreviateSupportMint(mint) {
-      if (!mint || mint.length < 9) return mint || '';
-      return `${mint.slice(0, 4)}...${mint.slice(-4)}`;
-    }
-
-    function initSupportTipCa() {
-      const btn = document.getElementById('supportTipCa');
-      const inner = document.getElementById('supportTipCaInner');
-      if (!btn || !inner) return;
-      const displayText = SUPPORT_TIP_MINT
-        ? `[${abbreviateSupportMint(SUPPORT_TIP_MINT)}]`
-        : '[xxxx...pump]';
-      inner.textContent = displayText;
-      btn.title = SUPPORT_TIP_MINT
-        ? 'Click to copy contract address'
-        : 'CA coming soon';
-
-      btn.addEventListener('click', async () => {
-        if (!SUPPORT_TIP_MINT) {
-          const prev = inner.textContent;
-          inner.textContent = '[Coming soon]';
-          setTimeout(() => {
-            inner.textContent = prev;
-          }, 1200);
-          return;
-        }
-        try {
-          await navigator.clipboard.writeText(SUPPORT_TIP_MINT.trim());
-          const prev = inner.textContent;
-          inner.textContent = '[Copied!]';
-          setTimeout(() => {
-            inner.textContent = prev;
-          }, 1500);
-        } catch (e) {
-          console.error('Copy failed:', e);
-        }
-      });
-    }
-
-    let caModalTargetBox = null;
-
-    function openCaModal(box) {
-      caModalTargetBox = box;
-      const overlay = document.getElementById('caModalOverlay');
-      const input = document.getElementById('caModalInput');
-      const err = document.getElementById('caModalError');
-      if (!overlay || !input) return;
-      err.textContent = '';
-      input.value = '';
-      overlay.classList.add('open');
-      overlay.setAttribute('aria-hidden', 'false');
-      requestAnimationFrame(() => {
-        input.focus();
-        input.select();
-      });
-    }
-
-    function closeCaModal() {
-      const overlay = document.getElementById('caModalOverlay');
-      if (!overlay) return;
-      overlay.classList.remove('open');
-      overlay.setAttribute('aria-hidden', 'true');
-      caModalTargetBox = null;
-    }
-
-    function confirmCaModal() {
-      const box = caModalTargetBox;
-      const input = document.getElementById('caModalInput');
-      const err = document.getElementById('caModalError');
-      if (!box || !input || !err) return;
-      const trimmed = input.value.trim();
-      if (!trimmed) {
-        err.textContent = 'Enter a contract address.';
-        return;
-      }
-      err.textContent = '';
-      commitAddToken(box, trimmed);
-      closeCaModal();
-    }
-
-    function initCaModal() {
-      const overlay = document.getElementById('caModalOverlay');
-      const input = document.getElementById('caModalInput');
-      const cancel = document.getElementById('caModalCancel');
-      const submit = document.getElementById('caModalSubmit');
-      if (!overlay || !input || !cancel || !submit) return;
-
-      overlay.addEventListener('click', (e) => {
-        if (e.target === overlay) closeCaModal();
-      });
-      cancel.addEventListener('click', closeCaModal);
-      submit.addEventListener('click', confirmCaModal);
-      input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          confirmCaModal();
-        }
-      });
-      document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && overlay.classList.contains('open')) {
-          e.preventDefault();
-          closeCaModal();
-        }
-      });
-    }
-
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', () => {
-        startDexmonBackground();
-        initSupportTipCa();
-        initCaModal();
-      });
-    } else {
-      startDexmonBackground();
-      initSupportTipCa();
-      initCaModal();
-    }
-
-    const tokens = []; // store {address, box, lastStatus, infoDiv, profileData, lastBoostCount, lastSocialCount}
-
-    function setBoxPlaceholder(box) {
-      box.innerHTML = '<span class="box-placeholder">Click to add CA</span>';
-      box.classList.remove('has-dex-banner');
-    }
-
-    async function getDex(mint) {
-      try {
-        const response = await fetch(`https://api.dexscreener.com/tokens/v1/solana/${mint}`);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const data = await response.json();
+    <div class="home-container">
+        <div class="home-logo-wrapper">
+            <img src="tokenfox.png" alt="TokenFox" class="home-logo" id="homeLogo">
+        </div>
         
-        if (!data || data.length === 0) {
-          return {
-            websites: [],
-            socials: [],
-            activeBoosts: 0,
-            headerUrl: null
-          };
-        }
-        
-        const pair = data[0];
-        const headerRaw = pair.info?.header;
-        const headerUrl =
-          typeof headerRaw === 'string' && headerRaw.trim() !== '' ? headerRaw.trim() : null;
-        
-        return {
-          websites: pair.info?.websites || [],
-          socials: pair.info?.socials || [],
-          activeBoosts: pair.boosts?.active || 0,
-          headerUrl
-        };
-      } catch (error) {
-        console.error('getDex failed:', error);
-        return {
-          websites: [],
-          socials: [],
-          activeBoosts: 0,
-          headerUrl: null
-        };
-      }
-    }
+        <div class="menu-buttons">
+            <div class="menu-section">
+                <button class="menu-btn" id="aboutBtn">About</button>
+                <button class="menu-btn" id="roadmapBtn">Roadmap</button>
+            </div>
+            <div class="menu-section horizontal">
+                <a href="alerts.html" class="menu-btn app-btn">Dex Alerts</a>
+                <a href="watch.html" class="menu-btn app-btn">Launch Watch</a>
+                <a href="scout.html" class="menu-btn app-btn">Top Volume</a>
+            </div>
+        </div>
+    </div>
 
-    function setDexBanner(token, url) {
-      const banner = token.box.querySelector('.box-dex-banner');
-      if (!banner) return;
-      banner.onload = null;
-      banner.onerror = null;
-      if (!url) {
-        token.box.classList.remove('has-dex-banner');
-        banner.removeAttribute('src');
-        return;
-      }
-      if (banner.getAttribute('src') === url && banner.complete && banner.naturalWidth > 0) {
-        token.box.classList.add('has-dex-banner');
-        return;
-      }
-      token.box.classList.remove('has-dex-banner');
-      banner.onload = () => token.box.classList.add('has-dex-banner');
-      banner.onerror = () => {
-        token.box.classList.remove('has-dex-banner');
-        banner.removeAttribute('src');
-      };
-      banner.src = url;
-    }
+    <!-- About Modal -->
+    <div class="info-modal-overlay" id="aboutModal">
+        <div class="info-modal-content">
+            <div class="info-modal-header">
+                <h2 class="info-modal-title">About</h2>
+                <button class="info-modal-close" id="closeAboutBtn">×</button>
+            </div>
+            <div class="info-modal-body">
+                <div class="about-slideshow-container">
+                    <!-- Slide 1: Overview -->
+                    <div class="about-slide active" data-slide="0">
+                        <div class="slide-card accent-green">
+                            <div class="slide-card-icon">🛠️</div>
+                            <div class="slide-card-body">
+                                <h3 class="slide-card-title">Building for PumpFun</h3>
+                                <p>I'm a freelance developer focused on shipping practical tools for PumpFun traders.</p>
+                                <ul class="slide-card-list">
+                                    <li>Dex payment monitor &amp; launch tooling</li>
+                                    <li>Launch Watch — rule-based new-token alerts</li>
+                                    <li>Top Volume — live 1-minute volume leaderboard</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
 
-    function dexSocialLinkLabel(social) {
-      const rawUrl = social.url || '';
-      const typeLower = (social.type || '').toLowerCase();
-      let pathname = '';
-      let host = '';
-      try {
-        const u = new URL(rawUrl);
-        host = u.hostname.replace(/^www\./i, '').toLowerCase();
-        pathname = u.pathname;
-      } catch {
-        return social.type || 'Social';
-      }
-      const isXOrTwitter =
-        host === 'x.com' ||
-        host === 'twitter.com' ||
-        host === 'mobile.x.com' ||
-        host === 'mobile.twitter.com' ||
-        typeLower === 'twitter' ||
-        typeLower === 'x';
-      if (isXOrTwitter) {
-        if (pathname.includes('/i/')) return 'X Community';
-        if (pathname.includes('/status/')) return 'Tweet Link';
-        return 'X Profile';
-      }
-      return social.type || 'Social';
-    }
+                    <!-- Slide 2: Support -->
+                    <div class="about-slide" data-slide="1">
+                        <div class="slide-card accent-blue">
+                            <div class="slide-card-icon">🚀</div>
+                            <div class="slide-card-body">
+                                <h3 class="slide-card-title">Why Support Matters</h3>
+                                <p>Backing this token unlocks better infrastructure so alerts and analytics can move beyond the browser.</p>
+                                <ul class="slide-card-list">
+                                    <li>Upgrade cloud servers & RPC access</li>
+                                    <li>Deliver Telegram & Discord alert bots</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
 
-    function updateTokenInfo(token) {
-      if (!token.profileData) {
-        token.infoDiv.style.display = 'none';
-        return;
-      }
+                    <!-- Slide 3: Community -->
+                    <div class="about-slide" data-slide="2">
+                        <div class="slide-card accent-purple">
+                            <div class="slide-card-icon">🤝</div>
+                            <div class="slide-card-body">
+                                <h3 class="slide-card-title">Community Picks the Next Build</h3>
+                                <p>The next app will be decided with community feedback. It doesn't have to be pure utility—interactive stream games and automated giveaways are on the table.</p>
+                                <p>Stay connected and help steer what ships next.</p>
+                            </div>
+                        </div>
+                        <div class="slide-card-buttons">
+                            <a href="https://x.com/nvr_knows_bst" target="_blank" rel="noopener noreferrer" class="developer-contact-btn">
+                                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+                                </svg>
+                                X Profile
+                            </a>
+                            <a href="https://x.com/i/communities/1985900885088563692" target="_blank" rel="noopener noreferrer" class="developer-contact-btn">
+                                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+                                </svg>
+                                X Community
+                            </a>
+                        </div>
+                    </div>
 
-      let html = '';
-      
-      if (token.profileData.activeBoosts > 0) {
-        html += `<div class="info-section">
-          <div class="info-label">Boosts</div>
-          <span class="boost-count">${token.profileData.activeBoosts} active</span>
-        </div>`;
-      }
+                    <!-- Navigation -->
+                    <div class="about-slideshow-navigation">
+                        <button class="about-slide-nav-btn" id="aboutPrevSlide">Previous</button>
+                        <div class="about-slide-dots">
+                            <span class="about-slide-dot active" data-slide="0"></span>
+                            <span class="about-slide-dot" data-slide="1"></span>
+                            <span class="about-slide-dot" data-slide="2"></span>
+                        </div>
+                        <button class="about-slide-nav-btn" id="aboutNextSlide">Next</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
-      if (token.profileData.websites.length > 0) {
-        html += `<div class="info-section"><div class="info-label">Websites</div>`;
-        token.profileData.websites.forEach(site => {
-          html += `<a href="${site.url}" target="_blank" class="info-link">${site.label || 'Website'}</a>`;
-        });
-        html += `</div>`;
-      }
+    <!-- Roadmap Modal -->
+    <div class="info-modal-overlay" id="roadmapModal">
+        <div class="info-modal-content">
+            <div class="info-modal-header">
+                <h2 class="info-modal-title">Roadmap</h2>
+                <button class="info-modal-close" id="closeRoadmapBtn">×</button>
+            </div>
+            <div class="info-modal-body">
+                <div class="roadmap-slideshow-container">
+                    <!-- Slide 1: Launch -->
+                    <div class="roadmap-slide active" data-slide="0">
+                        <div class="slide-card accent-green">
+                            <div class="slide-card-icon">💡</div>
+                            <div class="slide-card-body">
+                                <h3 class="slide-card-title">Reward Allocation</h3>
+                                <p>Rewards still cover dex payments and buybacks, but now they also fund the tooling directly.</p>
+                                <p>Early priorities include cloud servers, virtual machines, and expanded RPC access.</p>
+                            </div>
+                        </div>
+                    </div>
 
-      if (token.profileData.socials.length > 0) {
-        html += `<div class="info-section"><div class="info-label">Socials</div>`;
-        token.profileData.socials.forEach(social => {
-          const label = dexSocialLinkLabel(social);
-          html += `<a href="${social.url}" target="_blank" class="info-link">${label}</a>`;
-        });
-        html += `</div>`;
-      }
+                    <!-- Slide 2: Plans -->
+                    <div class="roadmap-slide" data-slide="1">
+                        <div class="slide-card accent-blue">
+                            <div class="slide-card-icon">📬</div>
+                            <div class="slide-card-body">
+                                <h3 class="slide-card-title">Direct Alert Delivery</h3>
+                                <p>Alerts currently run client-side when you're on the site. The next milestone is moving them server-side so Telegram and Discord DMs fire automatically.</p>
+                                <p>Lightweight infrastructure upgrades get us there quickly.</p>
+                            </div>
+                        </div>
+                    </div>
 
-      if (html) {
-        token.infoDiv.innerHTML = html;
-        token.infoDiv.classList.add('visible');
-      } else {
-        token.infoDiv.style.display = 'none';
-      }
-    }
+                    <!-- Slide 3: Upgrades -->
+                    <div class="roadmap-slide" data-slide="2">
+                        <div class="slide-card accent-purple">
+                            <div class="slide-card-icon">🌐</div>
+                            <div class="slide-card-body">
+                                <h3 class="slide-card-title">Community-Led Iteration</h3>
+                                <p>Every iteration pulls from community suggestions—refining current features and green-lighting new ones.</p>
+                                <p>The goal is to ship tools that make PumpFun trading faster and more collaborative.</p>
+                            </div>
+                        </div>
+                    </div>
 
-    function handleBoxClick(box) {
-      // If empty, add token
-      if (box.querySelector('.box-placeholder')) {
-        addToken(box);
-      } else {
-        // If populated, open new tab with selected platform link
-        const token = tokens.find(t => t.box === box);
-        if (token) {
-          const platform = document.getElementById('platformSelect').value;
-          let url;
-          
-          switch(platform) {
-            case 'gmgn':
-              url = `https://gmgn.ai/sol/token/${token.address}`;
-              break;
-            case 'terminal':
-              url = `https://trade.padre.gg/trade/solana/${token.address}`;
-              break;
-            case 'axiom':
-            default:
-              url = `https://axiom.trade/t/${token.address}?chain=sol`;
-              break;
-          }
-          
-          window.open(url, "_blank");
-        }
-      }
-    }
+                    <!-- Navigation -->
+                    <div class="roadmap-slideshow-navigation">
+                        <button class="roadmap-slide-nav-btn" id="roadmapPrevSlide">Previous</button>
+                        <div class="roadmap-slide-dots">
+                            <span class="roadmap-slide-dot active" data-slide="0"></span>
+                            <span class="roadmap-slide-dot" data-slide="1"></span>
+                            <span class="roadmap-slide-dot" data-slide="2"></span>
+                        </div>
+                        <button class="roadmap-slide-nav-btn" id="roadmapNextSlide">Next</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
-    function addToken(box) {
-      openCaModal(box);
-    }
-
-    function commitAddToken(box, trimmed) {
-      box.innerHTML = "";
-      const stack = document.createElement("div");
-      stack.className = "box-stack";
-      const img = document.createElement("img");
-      img.className = "box-token-img";
-      img.src = `https://images.pump.fun/coin-image/${trimmed}?variant=600x600`;
-      img.alt = "Token Image";
-      const banner = document.createElement("img");
-      banner.className = "box-dex-banner";
-      banner.alt = "";
-      stack.appendChild(img);
-      stack.appendChild(banner);
-      box.appendChild(stack);
-
-      const removeBtn = box.parentElement.querySelector(".remove-btn");
-      removeBtn.style.display = "inline-block";
-
-      const infoDiv = box.parentElement.querySelector(".token-info");
-      tokens.push({ 
-        address: trimmed, 
-        box, 
-        lastStatus: null,
-        infoDiv,
-        profileData: null,
-        lastBoostCount: 0,
-        lastSocialCount: 0
-      });
-    }
-
-    function removeToken(btn) {
-      const container = btn.parentElement;
-      const box = container.querySelector(".box");
-      const infoDiv = container.querySelector(".token-info");
-      setBoxPlaceholder(box);
-      infoDiv.innerHTML = "";
-      infoDiv.classList.remove('visible');
-      btn.style.display = "none";
-      const idx = tokens.findIndex(t => t.box === box);
-      if (idx !== -1) tokens.splice(idx, 1);
-      box.style.borderColor = "#444";
-      box.style.boxShadow = "none";
-    }
-
-    async function checkDexStatus(token) {
-      try {
-        const res = await fetch(`https://api.dexscreener.com/orders/v1/solana/${token.address}`);
-        if (!res.ok) throw new Error("HTTP " + res.status);
-        const data = await res.json();
-        console.log("Dex API response for", token.address, ":", data);
-
-        if (data.orders && data.orders.length > 0) {
-          const status = data.orders[0].status;
-          console.log("Status:", status);
-
-          if (status !== token.lastStatus) {
-            if (status === "processing") playProcessingSound();
-            else if (status === "approved") playApprovedSound();
-            else if (status === "cancelled") playCancelledSound();
-          }
-          token.lastStatus = status;
-
-          if (status === "processing") {
-            token.box.style.borderColor = "yellow";
-            token.box.style.boxShadow = "0 0 20px yellow";
-            setDexBanner(token, null);
-          } else if (status === "approved") {
-            token.box.style.borderColor = "limegreen";
-            token.box.style.boxShadow = "0 0 20px limegreen";
-            
-            const profile = await getDex(token.address);
-            
-            const currentBoostCount = profile.activeBoosts;
-            const currentSocialCount = profile.socials.length + profile.websites.length;
-            
-            if (token.lastBoostCount > 0 && currentBoostCount > token.lastBoostCount) {
-              console.log(`Boost increased: ${token.lastBoostCount} -> ${currentBoostCount}`);
-              playBoostUpdateSound();
+    <script>
+        // Canvas Animation for Home Menu - Finance Chart Style
+        class HomeCanvasAnimation {
+            constructor() {
+                this.canvas = document.getElementById('backgroundCanvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.bars = [];
+                this.setupCanvas();
+                this.createBars();
+                this.animate();
             }
-            
-            if (token.lastSocialCount > 0 && currentSocialCount > token.lastSocialCount) {
-              console.log(`Socials/websites updated: ${token.lastSocialCount} -> ${currentSocialCount}`);
-              playSocialUpdateSound();
+
+            setupCanvas() {
+                const resize = () => {
+                    this.canvas.width = window.innerWidth;
+                    this.canvas.height = window.innerHeight;
+                    this.createBars(); // Recreate bars on resize
+                };
+                resize();
+                window.addEventListener('resize', resize);
             }
+
+            createBars() {
+                const width = this.canvas.width;
+                const height = this.canvas.height;
+                const barCount = Math.floor(width / 20); // One bar every 20 pixels (thicker bars)
+                const barWidth = width / barCount;
+                
+                this.bars = [];
+                for (let i = 0; i < barCount; i++) {
+                    this.bars.push({
+                        x: i * barWidth,
+                        height: Math.random() * height * 0.25, // Max 25% of screen height (shorter)
+                        targetHeight: Math.random() * height * 0.25,
+                        speed: 0.005 + Math.random() * 0.01, // Much slower movement
+                        phase: Math.random() * Math.PI * 2,
+                        waveSpeed: 0.15 + Math.random() * 0.15 // Slower wave speed
+                    });
+                }
+            }
+
+            animate() {
+                const ctx = this.ctx;
+                const width = this.canvas.width;
+                const height = this.canvas.height;
+                const time = Date.now() * 0.001;
+
+                // Fill with dark gray background
+                ctx.fillStyle = '#1a1a1a';
+                ctx.fillRect(0, 0, width, height);
+
+                // Update and draw bars
+                this.bars.forEach((bar, i) => {
+                    // Animate target height with wave-like motion (slower, shorter)
+                    bar.targetHeight = (height * 0.1) + 
+                        Math.sin(time * bar.waveSpeed + bar.phase) * (height * 0.15) +
+                        Math.sin(time * bar.waveSpeed * 0.7 + i * 0.1) * (height * 0.05);
+
+                    // Smoothly interpolate to target height
+                    bar.height += (bar.targetHeight - bar.height) * bar.speed;
+
+                    // Draw bar rising from bottom
+                    const barWidth = width / this.bars.length;
+                    const barHeight = Math.max(1, bar.height);
+                    const barX = bar.x;
+                    const barY = height - barHeight;
+
+                    // Create gradient for each bar (much more transparent)
+                    const gradient = ctx.createLinearGradient(
+                        barX, barY,
+                        barX, height
+                    );
+                    gradient.addColorStop(0, 'rgba(74, 222, 128, 0.15)'); // Very transparent green at top
+                    gradient.addColorStop(0.5, 'rgba(74, 222, 128, 0.08)'); // More transparent
+                    gradient.addColorStop(1, 'rgba(74, 222, 128, 0.03)'); // Almost transparent at bottom
+
+                    ctx.fillStyle = gradient;
+                    ctx.fillRect(barX, barY, barWidth - 2, barHeight); // -2 for spacing between bars
+
+                    // Add subtle glow effect at the top of bars (much more transparent)
+                    if (barHeight > 10) {
+                        const glowGradient = ctx.createLinearGradient(
+                            barX, barY,
+                            barX, barY + 15
+                        );
+                        glowGradient.addColorStop(0, 'rgba(74, 222, 128, 0.08)');
+                        glowGradient.addColorStop(1, 'rgba(74, 222, 128, 0)');
+                        ctx.fillStyle = glowGradient;
+                        ctx.fillRect(barX, barY, barWidth - 2, Math.min(15, barHeight));
+                    }
+                });
+
+                requestAnimationFrame(() => this.animate());
+            }
+        }
+
+        // Initialize canvas animation
+        let canvasAnimation;
+
+        // Apply theme from localStorage if available
+        const savedSettings = localStorage.getItem('tokenAlertSettings');
+        if (savedSettings) {
+            try {
+                const settings = JSON.parse(savedSettings);
+                if (settings.theme) {
+                    document.body.setAttribute('data-theme', settings.theme);
+                }
+            } catch (e) {
+                console.error('Error loading theme:', e);
+            }
+        }
+
+        // Load and verify user session from localStorage
+        let currentUser = null;
+        
+        function loadUserSessionFromStorage() {
+            try {
+                const stored = localStorage.getItem('userSession');
+                if (stored) {
+                    const session = JSON.parse(stored);
+                    if (session.username && session.password) {
+                        currentUser = {
+                            username: session.username,
+                            password: session.password
+                        };
+                        verifyAndRestoreSession();
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading user session from localStorage:', error);
+                localStorage.removeItem('userSession');
+            }
+        }
+
+        async function verifyAndRestoreSession() {
+            if (!currentUser) return;
             
-            token.lastBoostCount = currentBoostCount;
-            token.lastSocialCount = currentSocialCount;
-            token.profileData = profile;
-            updateTokenInfo(token);
-            setDexBanner(token, profile.headerUrl);
-          } else if (status === "cancelled") {
-            token.box.style.borderColor = "red";
-            token.box.style.boxShadow = "0 0 20px red";
-            setDexBanner(token, null);
-          } else {
-            token.box.style.borderColor = "#444";
-            token.box.style.boxShadow = "none";
-            setDexBanner(token, null);
-          }
+            try {
+                const response = await fetch('/api/users/get-alerts', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username: currentUser.username,
+                        password: currentUser.password
+                    })
+                });
+                
+                const data = await response.json();
+                if (response.ok && data.success) {
+                    // Session is valid, update login status display
+                    updateLoginStatusDisplay();
+                } else {
+                    // Session is invalid, clear it
+                    currentUser = null;
+                    localStorage.removeItem('userSession');
+                    updateLoginStatusDisplay();
+                }
+            } catch (error) {
+                console.error('Error verifying user session:', error);
+            }
+        }
+
+        function updateLoginStatusDisplay() {
+            const loginStatusEl = document.getElementById('loginStatus');
+            if (loginStatusEl) {
+                if (currentUser) {
+                    loginStatusEl.innerHTML = `
+                        <a href="alerts.html" style="text-decoration: none; color: var(--text-primary); display: flex; align-items: center; gap: 0.5rem;">
+                            <span>👤</span>
+                            <span>${escapeHtml(currentUser.username)}</span>
+                        </a>
+                    `;
+                    loginStatusEl.style.display = 'block';
+                } else {
+                    loginStatusEl.style.display = 'none';
+                }
+            }
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Load session on page load
+        loadUserSessionFromStorage();
+
+        // Contract Address functionality
+        // Get localToken from server
+        let localToken = 'no data';
+        
+        const contractAddressEl = document.getElementById('contractAddress');
+        if (contractAddressEl) {
+            // Fetch localToken from server
+            (async () => {
+                try {
+                    const response = await fetch('/api/localToken');
+                    const data = await response.json();
+                    localToken = data.localToken || 'no data';
+                    contractAddressEl.textContent = `Contract Address: ${localToken}`;
+                } catch (error) {
+                    console.error('Error fetching localToken:', error);
+                    localToken = 'no data';
+                    contractAddressEl.textContent = `Contract Address: ${localToken}`;
+                }
+            })();
+            
+            contractAddressEl.addEventListener('click', async () => {
+                try {
+                    // Get current value from element text in case fetch hasn't completed
+                    const currentToken = localToken === 'no data' 
+                        ? contractAddressEl.textContent.replace('Contract Address: ', '')
+                        : localToken;
+                    await navigator.clipboard.writeText(currentToken);
+                    contractAddressEl.classList.add('copied');
+                    const originalText = contractAddressEl.textContent;
+                    contractAddressEl.textContent = 'Copied!';
+                    
+                    setTimeout(() => {
+                        contractAddressEl.classList.remove('copied');
+                        contractAddressEl.textContent = originalText;
+                    }, 2000);
+                } catch (err) {
+                    console.error('Failed to copy:', err);
+                    // Fallback for older browsers
+                    const currentToken = localToken === 'no data' 
+                        ? contractAddressEl.textContent.replace('Contract Address: ', '')
+                        : localToken;
+                    const textArea = document.createElement('textarea');
+                    textArea.value = currentToken;
+                    textArea.style.position = 'fixed';
+                    textArea.style.opacity = '0';
+                    document.body.appendChild(textArea);
+                    textArea.select();
+                    try {
+                        document.execCommand('copy');
+                        contractAddressEl.classList.add('copied');
+                        const originalText = contractAddressEl.textContent;
+                        contractAddressEl.textContent = 'Copied!';
+                        setTimeout(() => {
+                            contractAddressEl.classList.remove('copied');
+                            contractAddressEl.textContent = originalText;
+                        }, 2000);
+                    } catch (fallbackErr) {
+                        console.error('Fallback copy failed:', fallbackErr);
+                    }
+                    document.body.removeChild(textArea);
+                }
+            });
+        }
+
+        // Start canvas animation after DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+                canvasAnimation = new HomeCanvasAnimation();
+                // Ensure logo animation triggers (image may already be loaded)
+                const logo = document.getElementById('homeLogo');
+                if (logo) {
+                    if (logo.complete) {
+                        logo.style.animation = 'fadeInScale 1s ease-out 0.3s forwards';
+                        setTimeout(() => logo.classList.add('visible'), 1300);
+                    } else {
+                        logo.addEventListener('load', () => {
+                            logo.style.animation = 'fadeInScale 1s ease-out 0.3s forwards';
+                            setTimeout(() => logo.classList.add('visible'), 1300);
+                        });
+                    }
+                }
+            });
         } else {
-          console.log("No orders for", token.address);
-          token.box.style.borderColor = "#444";
-          token.box.style.boxShadow = "none";
-          setDexBanner(token, null);
+            canvasAnimation = new HomeCanvasAnimation();
+            // Ensure logo animation triggers (image may already be loaded)
+            const logo = document.getElementById('homeLogo');
+            if (logo) {
+                if (logo.complete) {
+                    logo.style.animation = 'fadeInScale 1s ease-out 0.3s forwards';
+                    setTimeout(() => logo.classList.add('visible'), 1300);
+                } else {
+                    logo.addEventListener('load', () => {
+                        logo.style.animation = 'fadeInScale 1s ease-out 0.3s forwards';
+                        setTimeout(() => logo.classList.add('visible'), 1300);
+                    });
+                }
+            }
         }
-      } catch (err) {
-        console.error("Dex check failed for", token.address, ":", err);
-        token.box.style.borderColor = "#444";
-        token.box.style.boxShadow = "none";
-        setDexBanner(token, null);
-      }
-    }
 
-    let currentIndex = 0;
-    setInterval(() => {
-      if (tokens.length === 0) return;
-      checkDexStatus(tokens[currentIndex]);
-      currentIndex = (currentIndex + 1) % tokens.length;
-    }, 1050);
+        // About Modal Slideshow
+        const aboutBtn = document.getElementById('aboutBtn');
+        const aboutModal = document.getElementById('aboutModal');
+        const closeAboutBtn = document.getElementById('closeAboutBtn');
+        const aboutSlides = document.querySelectorAll('.about-slide');
+        const aboutDots = document.querySelectorAll('.about-slide-dot');
+        const aboutPrevBtn = document.getElementById('aboutPrevSlide');
+        const aboutNextBtn = document.getElementById('aboutNextSlide');
+        let currentAboutSlide = 0;
+        const totalAboutSlides = aboutSlides.length;
 
-    // --- Sound functions ---
-    function playProcessingSound() {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = "triangle";
-      osc.frequency.setValueAtTime(440, ctx.currentTime); // lower tone
-      gain.gain.setValueAtTime(0.3, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
-      osc.connect(gain).connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.8);
-    }
+        function showAboutSlide(index) {
+            // Hide all slides
+            aboutSlides.forEach(slide => slide.classList.remove('active'));
+            aboutDots.forEach(dot => dot.classList.remove('active'));
 
-    function playApprovedSound() {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      const osc1 = ctx.createOscillator();
-      const gain1 = ctx.createGain();
-      osc1.type = "triangle";
-      osc1.frequency.setValueAtTime(880, ctx.currentTime);
-      gain1.gain.setValueAtTime(0.3, ctx.currentTime);
-      gain1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
-      osc1.connect(gain1).connect(ctx.destination);
-      osc1.start();
-      osc1.stop(ctx.currentTime + 0.4);
+            // Show current slide
+            if (aboutSlides[index]) {
+                aboutSlides[index].classList.add('active');
+            }
+            if (aboutDots[index]) {
+                aboutDots[index].classList.add('active');
+            }
 
-      const osc2 = ctx.createOscillator();
-      const gain2 = ctx.createGain();
-      osc2.type = "triangle";
-      osc2.frequency.setValueAtTime(660, ctx.currentTime + 0.45);
-      gain2.gain.setValueAtTime(0.3, ctx.currentTime + 0.45);
-      gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.85);
-      osc2.connect(gain2).connect(ctx.destination);
-      osc2.start(ctx.currentTime + 0.45);
-      osc2.stop(ctx.currentTime + 0.85);
-    }
+            // Update button states
+            aboutPrevBtn.disabled = index === 0;
+            aboutNextBtn.disabled = index === totalAboutSlides - 1;
+        }
 
-    function playCancelledSound() {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = "sawtooth";
-      osc.frequency.setValueAtTime(120, ctx.currentTime); // lower tone
-      gain.gain.setValueAtTime(0.1, ctx.currentTime); // softer volume
-      gain.gain.setValueAtTime(0.0, ctx.currentTime + 0.2);
-      gain.gain.setValueAtTime(0.1, ctx.currentTime + 0.4);
-      gain.gain.setValueAtTime(0.0, ctx.currentTime + 0.6);
-      osc.connect(gain).connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.7);
-    }
+        function nextAboutSlide() {
+            if (currentAboutSlide < totalAboutSlides - 1) {
+                currentAboutSlide++;
+                showAboutSlide(currentAboutSlide);
+            }
+        }
 
-    function playSocialUpdateSound() {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      
-      const osc1 = ctx.createOscillator();
-      const gain1 = ctx.createGain();
-      osc1.type = "sine";
-      osc1.frequency.setValueAtTime(523, ctx.currentTime);
-      gain1.gain.setValueAtTime(0.2, ctx.currentTime);
-      gain1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
-      osc1.connect(gain1).connect(ctx.destination);
-      osc1.start();
-      osc1.stop(ctx.currentTime + 0.15);
+        function prevAboutSlide() {
+            if (currentAboutSlide > 0) {
+                currentAboutSlide--;
+                showAboutSlide(currentAboutSlide);
+            }
+        }
 
-      const osc2 = ctx.createOscillator();
-      const gain2 = ctx.createGain();
-      osc2.type = "sine";
-      osc2.frequency.setValueAtTime(523, ctx.currentTime + 0.2);
-      gain2.gain.setValueAtTime(0.2, ctx.currentTime + 0.2);
-      gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
-      osc2.connect(gain2).connect(ctx.destination);
-      osc2.start(ctx.currentTime + 0.2);
-      osc2.stop(ctx.currentTime + 0.35);
-    }
+        // Navigation button handlers
+        if (aboutNextBtn) {
+            aboutNextBtn.addEventListener('click', nextAboutSlide);
+        }
+        if (aboutPrevBtn) {
+            aboutPrevBtn.addEventListener('click', prevAboutSlide);
+        }
 
-    function playBoostUpdateSound() {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = "square";
-      osc.frequency.setValueAtTime(262, ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(523, ctx.currentTime + 0.2);
-      gain.gain.setValueAtTime(0.15, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
-      osc.connect(gain).connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.3);
-    }
-  </script>
+        // Dot navigation
+        aboutDots.forEach((dot, index) => {
+            dot.addEventListener('click', () => {
+                currentAboutSlide = index;
+                showAboutSlide(currentAboutSlide);
+            });
+        });
+
+        // About Modal
+        aboutBtn.addEventListener('click', () => {
+            aboutModal.classList.add('active');
+            document.body.style.overflow = 'hidden';
+            // Reset to first slide when opening
+            currentAboutSlide = 0;
+            showAboutSlide(0);
+        });
+
+        closeAboutBtn.addEventListener('click', () => {
+            aboutModal.classList.remove('active');
+            document.body.style.overflow = '';
+        });
+
+        aboutModal.addEventListener('click', (e) => {
+            if (e.target === aboutModal) {
+                aboutModal.classList.remove('active');
+                document.body.style.overflow = '';
+            }
+        });
+
+        // Roadmap Modal Slideshow
+        const roadmapBtn = document.getElementById('roadmapBtn');
+        const roadmapModal = document.getElementById('roadmapModal');
+        const closeRoadmapBtn = document.getElementById('closeRoadmapBtn');
+        const roadmapSlides = document.querySelectorAll('.roadmap-slide');
+        const roadmapDots = document.querySelectorAll('.roadmap-slide-dot');
+        const roadmapPrevBtn = document.getElementById('roadmapPrevSlide');
+        const roadmapNextBtn = document.getElementById('roadmapNextSlide');
+        let currentRoadmapSlide = 0;
+        const totalRoadmapSlides = roadmapSlides.length;
+
+        function showRoadmapSlide(index) {
+            // Hide all slides
+            roadmapSlides.forEach(slide => slide.classList.remove('active'));
+            roadmapDots.forEach(dot => dot.classList.remove('active'));
+
+            // Show current slide
+            if (roadmapSlides[index]) {
+                roadmapSlides[index].classList.add('active');
+            }
+            if (roadmapDots[index]) {
+                roadmapDots[index].classList.add('active');
+            }
+
+            // Update button states
+            roadmapPrevBtn.disabled = index === 0;
+            roadmapNextBtn.disabled = index === totalRoadmapSlides - 1;
+        }
+
+        function nextRoadmapSlide() {
+            if (currentRoadmapSlide < totalRoadmapSlides - 1) {
+                currentRoadmapSlide++;
+                showRoadmapSlide(currentRoadmapSlide);
+            }
+        }
+
+        function prevRoadmapSlide() {
+            if (currentRoadmapSlide > 0) {
+                currentRoadmapSlide--;
+                showRoadmapSlide(currentRoadmapSlide);
+            }
+        }
+
+        // Navigation button handlers
+        if (roadmapNextBtn) {
+            roadmapNextBtn.addEventListener('click', nextRoadmapSlide);
+        }
+        if (roadmapPrevBtn) {
+            roadmapPrevBtn.addEventListener('click', prevRoadmapSlide);
+        }
+
+        // Dot navigation
+        roadmapDots.forEach((dot, index) => {
+            dot.addEventListener('click', () => {
+                currentRoadmapSlide = index;
+                showRoadmapSlide(currentRoadmapSlide);
+            });
+        });
+
+        // Roadmap Modal
+        roadmapBtn.addEventListener('click', () => {
+            roadmapModal.classList.add('active');
+            document.body.style.overflow = 'hidden';
+            // Reset to first slide when opening
+            currentRoadmapSlide = 0;
+            showRoadmapSlide(0);
+        });
+
+        closeRoadmapBtn.addEventListener('click', () => {
+            roadmapModal.classList.remove('active');
+            document.body.style.overflow = '';
+        });
+
+        roadmapModal.addEventListener('click', (e) => {
+            if (e.target === roadmapModal) {
+                roadmapModal.classList.remove('active');
+                document.body.style.overflow = '';
+            }
+        });
+
+    </script>
 </body>
 </html>
+
